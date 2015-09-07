@@ -48,11 +48,11 @@ set(CMAKE_CXX_FLAGS
     -fPIC -pipe \
     -g3 -Wextra -Wall \
     "
-    CACHE STRING " gxx compiler flags "   )
+    CACHE STRING " gxx compiler flags "  FORCE )
 
 #--coverage -ftest-coverage
-set(CMAKE_CXX_FLAGS_DEBUG   " ${CMAKE_CXX_FLAGS}  -DDEBUG -D_DEBUG   " CACHE STRING "debug flags"  )
-set(CMAKE_CXX_FLAGS_RELEASE " ${CMAKE_CXX_FLAGS}  -DNDEBUG -DOPT_BUILD -O3  " CACHE STRING "release flags"  )
+set(CMAKE_CXX_FLAGS_DEBUG   " ${CMAKE_CXX_FLAGS}  -DDEBUG -D_DEBUG   " CACHE STRING "debug flags"  FORCE)
+set(CMAKE_CXX_FLAGS_RELEASE " ${CMAKE_CXX_FLAGS}  -DNDEBUG -DOPT_BUILD -O3  " CACHE STRING "release flags"  FORCE )
 
 set(CMAKE_VERBOSE_MAKEFILE on)
 set(CMAKE_COLOR_MAKEFILE   on)
