@@ -552,6 +552,9 @@ static GOptionEntry options[] = {
 	{ NULL },
 };
 
+
+#if defined(NO_MAIN_IN_PK_C)
+#else
 int main(int argc, char *argv[])
 {
 	GOptionContext *context;
@@ -632,7 +635,7 @@ int main(int argc, char *argv[])
 	 * the plugins might wanna expose some paths on the bus. However the
 	 * best order of how to init various subsystems of the Bluetooth
 	 * daemon needs to be re-worked. */
-	plugin_init(option_plugin, option_noplugin);
+    plugin_init(option_plugin, option_noplugin);
 
 	/* no need to keep parsed option in memory */
 	free_options();
@@ -692,3 +695,4 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
+#endif

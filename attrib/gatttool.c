@@ -523,7 +523,11 @@ static GOptionEntry options[] = {
 	{ NULL },
 };
 
+#if defined(NO_MAIN_IN_PK_C)
+int init_pk_hack_gatttool(int argc, char* argv[] )
+#else
 int main(int argc, char *argv[])
+#endif
 {
 	GOptionContext *context;
 	GOptionGroup *gatt_group, *params_group, *char_rw_group;
