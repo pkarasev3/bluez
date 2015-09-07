@@ -43,6 +43,8 @@ file(GLOB  BZX_SRC  ../*.h
                     ../btio/*.c  ../btio/*.h
     )
 add_library( bluezX_src  STATIC  ${BZX_SRC}
+
+
 ../src/adapter.c
 ../src/advertising.c
 ../src/agent.c
@@ -105,7 +107,7 @@ set(tools_btgatt_SOURCES
     ../tools/pk-btgatt-hack.c 
     ../src/uuid-helper.c )
 
-add_compile_options( -static  -pthread  -static-libgcc -nodefaultlibs )  # -ldbus-1
+add_compile_options( -static  -pthread )  # -ldbus-1
 
 file(GLOB  GATTTOOL_SRC ../attrib/*.h ../attrib/*.c  ../client/display.h ../client/display.c  )
 add_executable( 
