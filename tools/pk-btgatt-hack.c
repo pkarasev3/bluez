@@ -62,6 +62,9 @@
 
 static bool verbose = false;
 
+ssize_t Readline(int fd, void *vptr, size_t maxlen);
+ssize_t Writeline(int fc, const void *vptr, size_t maxlen);
+
 struct client {
   int fd;
   struct bt_att *att;
@@ -70,6 +73,91 @@ struct client {
 
   unsigned int reliable_session_id;
 };
+
+#include <sys/socket.h>       /*  socket definitions        */
+#include <sys/types.h>        /*  socket types              */
+#include <arpa/inet.h>        /*  inet (3) funtions         */
+struct tcpip_server
+{
+    int       list_s;                /*  listening socket          */
+    int       conn_s;                /*  connection socket         */
+    short int port;                  /*  port number               */
+    struct    sockaddr_in servaddr;  /*  socket address structure  */
+    char      buffer[1024];          /*  character buffer          */
+    char     *endptr;                /*  for strtol()              */
+    int       loop_idx;
+    int       line_len;              /*  # of chars in line, before hitting \n */
+};
+
+struct tcpip_server*  global_server;
+
+static struct tcpip_server* tcpip_server_create()
+{
+  struct tcpip_server* serv;
+
+  serv = new0(struct tcpip_server, 1);
+
+  return serv;
+}
+
+static void tcpip_server_write_line(struct tcpip_server* serv)
+{
+    printf(" attempting to write line...  ");
+    if( serv->conn_s < 0 )
+        serv->conn_s = accept(serv->list_s, NULL, NULL);
+
+    if( serv->conn_s < 0 )
+        printf(" failed to accept() connection! \n ");
+
+    if( serv->line_len <= 0 )
+        return;
+
+    Writeline(serv->conn_s,serv->buffer,serv->line_len);
+    serv->line_len = 0;
+    printf(" success!\n ");
+}
+
+static void tcpip_server_destroy(struct tcpip_server* serv)
+{
+    close(serv->conn_s);
+    free(serv);
+}
+
+#define LISTENQ        (1024)
+
+static struct tcpip_server*   setup_tcpip_server( struct tcpip_server*  serv)
+{
+    serv->port = 1337;
+    fprintf(stdout,"port = %d\n",serv->port);
+
+    if ( (serv->list_s = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
+    {
+        fprintf(stderr, "ECHOSERV: Error creating listening socket.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    memset(&serv->servaddr, 0, sizeof(serv->servaddr));
+    serv->servaddr.sin_family      = AF_INET;
+    serv->servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serv->servaddr.sin_port        = htons(serv->port);
+
+    serv->line_len = 0;
+
+    if ( bind(serv->list_s, (struct sockaddr *) &serv->servaddr, sizeof(serv->servaddr)) < 0 )
+    {
+        fprintf(stderr, "ECHOSERV: Error calling bind()\n");
+        exit(EXIT_FAILURE);
+    }
+    if ( listen(serv->list_s, LISTENQ) < 0 )
+    {
+        fprintf(stderr, "ECHOSERV: Error calling listen()\n");
+        exit(EXIT_FAILURE);
+    }
+
+    serv->conn_s = -2;
+
+    return serv;
+}
 
 static void print_prompt(void)
 {
@@ -142,7 +230,7 @@ static void att_debug_cb(const char *str, void *user_data)
 static void gatt_debug_cb(const char *str, void *user_data)
 {
   const char *prefix = user_data;
-
+  fprintf(stdout,"gatt_debug_cb: ");
   PRLOG(COLOR_GREEN "%s%s\n" COLOR_OFF, prefix, str);
 }
 
@@ -358,6 +446,58 @@ static void print_services_by_handle(struct client *cli, uint16_t handle)
   gatt_db_foreach_service(cli->db, NULL, print_service, cli);
 }
 
+static void cmd_register_notify(struct client *cli, char *cmd_str);
+
+static void write_cb(bool success, uint8_t att_ecode, void *user_data);
+
+static void inject_pk_hack(struct client *cli)
+{
+    if(1)
+    { /** begin inserted hack */
+        uint16_t Xhandle = 0x0015;
+        unsigned int idx = 0;
+        const char cmd1[] = {'i','n','v','c',0x0d,0x0a};
+        const char cmd2[] = {'i','n','v','8',0x0d,0x0a};
+
+        sleep(1);
+        while( idx < sizeof(cmd1) )
+        {
+            uint8_t val;
+            int result;
+            val = cmd1[idx];
+            result = !bt_gatt_client_write_value(
+                          cli->gatt,
+                          Xhandle,
+                          &val,
+                          1,
+                          write_cb,
+                          NULL, NULL);
+            idx++;
+            fprintf(stdout,"r=%d..",result);
+        }
+
+        sleep(1);
+        idx = 0;
+        while( idx < sizeof(cmd2) )
+        {
+            uint8_t val;
+            int result;
+            val = cmd2[idx];
+            result = !bt_gatt_client_write_value(
+                          cli->gatt,
+                          Xhandle,
+                          &val,
+                          1,
+                          write_cb,
+                          NULL, NULL);
+            idx++;
+            fprintf(stdout,"r=%d..",result);
+        }
+
+        //cmd_register_notify(cli,"register-notify  0x0018");
+    }   /** end inserted hack   */
+}
+
 static void ready_cb(bool success, uint8_t att_ecode, void *user_data)
 {
   struct client *cli = user_data;
@@ -372,6 +512,9 @@ static void ready_cb(bool success, uint8_t att_ecode, void *user_data)
 
   print_services(cli);
   print_prompt();
+
+  inject_pk_hack(cli);
+
 }
 
 static void service_changed_cb(uint16_t start_handle, uint16_t end_handle,
@@ -1104,6 +1247,9 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
 {
   int i;
 
+  printf(" global_serv->port=%d ... ",global_server->port);
+  printf("NOTIFY_CB: ");
+
   printf("\n\tHandle Value Not/Ind: 0x%04x - ", value_handle);
 
   if (length == 0) {
@@ -1114,7 +1260,18 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
   printf("(%u bytes): ", length);
 
   for (i = 0; i < length; i++)
+  {
+    global_server->buffer[ global_server->line_len ] = value[i];
+    global_server->line_len += 1;
     printf("%02x ", value[i]);
+    if( (i>0) && (value[i-1]==0x0d) && (value[i]==0x0a) )
+    {
+        printf("got new line of length %03d\n",global_server->line_len);
+        tcpip_server_write_line( global_server );
+
+        global_server->line_len = 0;
+    }
+  }
 
   PRLOG("\n");
 }
@@ -1481,7 +1638,7 @@ static int l2cap_le_att_connect(bdaddr_t *src, bdaddr_t *dst, uint8_t dst_type,
   dstaddr.l2_bdaddr_type = dst_type;
   bacpy(&dstaddr.l2_bdaddr, dst);
 
-  printf("Connecting to device...");
+  printf("Connecting to device XXX...");
   fflush(stdout);
 
   if (connect(sock, (struct sockaddr *) &dstaddr, sizeof(dstaddr)) < 0) {
@@ -1538,6 +1695,10 @@ int main(int argc, char *argv[])
   int fd;
   sigset_t mask;
   struct client *cli;
+  struct tcpip_server* PKserv;
+
+  PKserv        = tcpip_server_create();
+  global_server = setup_tcpip_server(PKserv);
 
   fprintf(stdout, "BLAH BLAH BLAH %d\n",__LINE__);
 
@@ -1668,48 +1829,82 @@ int main(int argc, char *argv[])
 
   print_prompt();
 
-  if(0)
-  { /** begin inserted hack */
-//      uint16_t Xhandle = 0x0015;
-//      int idx = 0;
-//      const char cmd1[] = {'i','n','v','q',0x0d,0x0a};
-//      const char cmd2[] = {'i','n','v','c',0x0d,0x0a};
-
-//      while( idx < sizeof(cmd1) )
-//      {
-//          uint8_t val;
-//          val = cmd1[idx];
-//          auto result = !bt_gatt_client_write_value(
-//                        cli->gatt,
-//                        Xhandle,
-//                        &val,
-//                        1,
-//                        write_cb,
-//                        NULL, NULL);
-//          idx++;
-//      }
-
-//      idx = 0;
-//      while( idx < sizeof(cmd2) )
-//      {
-//          uint8_t val;
-//          val = cmd2[idx];
-//          auto result = !bt_gatt_client_write_value(
-//                        cli->gatt,
-//                        Xhandle,
-//                        &val,
-//                        1,
-//                        NULL/*write_cb*/,
-//                        NULL, NULL);
-//          idx++;
-//      }
-  } /** end inserted hack   */
-
   mainloop_run();
 
   printf("\n\nShutting down...\n");
 
   client_destroy(cli);
 
+  tcpip_server_destroy(PKserv);
+
   return EXIT_SUCCESS;
 }
+
+
+#define LISTENQ        (1024)  
+#include <sys/socket.h>
+#include <errno.h>
+
+ssize_t Readline(int sockd, void *vptr, size_t maxlen) 
+{
+    ssize_t rc;
+    size_t  n;
+    char    c, *buffer;
+
+    buffer = vptr;
+
+    for ( n = 1; n < maxlen; n++ ) 
+    {	
+	    if ( (rc = read(sockd, &c, 1)) == 1 ) 
+        {
+	        *buffer++ = c;
+	        if ( c == '\n' )
+		    break;
+	    }
+	    else if ( rc == 0 ) 
+        {
+	        if ( n == 1 )
+        		return 0;
+	        else
+        		break;
+	    }
+	    else 
+        {
+	        if ( errno == EINTR )
+        		continue;
+	        return -1;
+	    }
+    }
+
+    *buffer = 0;
+    return n;
+}
+
+ssize_t Writeline(int sockd, const void *vptr, size_t n) 
+{
+    size_t      nleft;
+    ssize_t     nwritten;
+    const char *buffer;
+
+    buffer = vptr;
+    nleft  = n;
+
+    while ( nleft > 0 ) 
+    {
+	    if ( (nwritten = write(sockd, buffer, nleft)) <= 0 ) 
+        {
+	        if ( errno == EINTR )
+		    nwritten = 0;
+	        else
+		    return -1;
+	    }
+	    nleft  -= nwritten;
+	    buffer += nwritten;
+    }
+
+    return n;
+}
+
+
+
+
