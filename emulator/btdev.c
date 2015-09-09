@@ -420,15 +420,24 @@ static void set_le_commands(struct btdev *btdev)
 	btdev->commands[25] |= 0x01;	/* LE Set Event Mask */
 	btdev->commands[25] |= 0x02;	/* LE Read Buffer Size */
 	btdev->commands[25] |= 0x04;	/* LE Read Local Features */
+	btdev->commands[25] |= 0x10;	/* LE Set Random Address */
 	btdev->commands[25] |= 0x20;	/* LE Set Adv Parameters */
 	btdev->commands[25] |= 0x40;	/* LE Read Adv TX Power */
 	btdev->commands[25] |= 0x80;	/* LE Set Adv Data */
+	btdev->commands[26] |= 0x01;	/* LE Set Scan Response Data */
 	btdev->commands[26] |= 0x02;	/* LE Set Adv Enable */
 	btdev->commands[26] |= 0x04;	/* LE Set Scan Parameters */
 	btdev->commands[26] |= 0x08;	/* LE Set Scan Enable */
+	btdev->commands[26] |= 0x10;	/* LE Create Connection */
 	btdev->commands[26] |= 0x40;	/* LE Read White List Size */
+	btdev->commands[26] |= 0x80;	/* LE Clear White List */
+	btdev->commands[27] |= 0x04;	/* LE Connection Update */
+	btdev->commands[27] |= 0x20;	/* LE Read Remote Used Features */
 	btdev->commands[27] |= 0x40;	/* LE Encrypt */
 	btdev->commands[27] |= 0x80;	/* LE Rand */
+	btdev->commands[28] |= 0x01;	/* LE Start Encryption */
+	btdev->commands[28] |= 0x02;	/* LE Long Term Key Request Reply */
+	btdev->commands[28] |= 0x04;	/* LE Long Term Key Request Neg Reply */
 	btdev->commands[28] |= 0x08;	/* LE Read Supported States */
 	btdev->commands[28] |= 0x10;	/* LE Receiver Test */
 	btdev->commands[28] |= 0x20;	/* LE Transmitter Test */
@@ -1195,7 +1204,7 @@ static void conn_request(struct btdev *btdev, const uint8_t *bdaddr)
 }
 
 static void le_conn_update(struct btdev *btdev, uint16_t handle,
-				uint16_t max_interval, uint16_t min_interval,
+				uint16_t min_interval, uint16_t max_interval,
 				uint16_t latency, uint16_t supv_timeout,
 				uint16_t min_length, uint16_t max_length)
 {

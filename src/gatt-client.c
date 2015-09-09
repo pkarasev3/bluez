@@ -1538,6 +1538,9 @@ static struct service *service_create(struct gatt_db_attribute *attr,
 	/* Set service active so we can skip discovering next time */
 	gatt_db_service_set_active(attr, true);
 
+	/* Mark the service as claimed since it going to be exported */
+	gatt_db_service_set_claimed(attr, true);
+
 	return service;
 }
 
@@ -1822,10 +1825,30 @@ fail:
 
 void btd_gatt_client_ready(struct btd_gatt_client *client)
 {
-	struct bt_gatt_client *gatt;
-
 	if (!client)
 		return;
+
+	if (!client->gatt) {
+		error("GATT client not initialized");
+		return;
+	}
+
+	client->ready = true;
+
+	DBG("GATT client ready");
+
+	create_services(client);
+
+	/*
+	 * Services have already been created before. Re-enable notifications
+	 * for any pre-registered notification sessions.
+	 */
+	queue_foreach(client->all_notify_clients, register_notify, client);
+}
+
+void btd_gatt_client_connected(struct btd_gatt_client *client)
+{
+	struct bt_gatt_client *gatt;
 
 	gatt = btd_device_get_gatt_client(client->device);
 	if (!gatt) {
@@ -1833,24 +1856,10 @@ void btd_gatt_client_ready(struct btd_gatt_client *client)
 		return;
 	}
 
+	DBG("Device connected.");
+
 	bt_gatt_client_unref(client->gatt);
 	client->gatt = bt_gatt_client_ref(gatt);
-
-	client->ready = true;
-
-	DBG("GATT client ready");
-
-	if (queue_isempty(client->services)) {
-		DBG("Exporting services");
-		create_services(client);
-		return;
-	}
-
-	/*
-	 * Services have already been created before. Re-enable notifications
-	 * for any pre-registered notification sessions.
-	 */
-	queue_foreach(client->all_notify_clients, register_notify, client);
 }
 
 void btd_gatt_client_service_added(struct btd_gatt_client *client,
