@@ -494,7 +494,8 @@ static void inject_pk_hack(struct client *cli)
             fprintf(stdout,"r=%d..",result);
         }
 
-        //cmd_register_notify(cli,"register-notify  0x0018");
+        if(0)
+            cmd_register_notify(cli,"0x0018");
     }   /** end inserted hack   */
 }
 
@@ -1295,6 +1296,8 @@ static void cmd_register_notify(struct client *cli, char *cmd_str)
   unsigned int id;
   char *endptr = NULL;
 
+  printf(COLOR_MAGENTA "register notify got cmd_str=%s\n" COLOR_OFF, cmd_str);
+
   if (!bt_gatt_client_is_ready(cli->gatt)) {
     printf("GATT client not initialized\n");
     return;
@@ -1479,6 +1482,8 @@ static void cmd_set_sign_key(struct client *cli, char *cmd_str)
 
 static void cmd_help(struct client *cli, char *cmd_str);
 
+static void cmd_exit(struct client *cli, char *cmd_str);
+
 typedef void (*command_func_t)(struct client *cli, char *cmd_str);
 
 static struct {
@@ -1511,6 +1516,8 @@ static struct {
         "\tGet security level on le connection"},
   { "set-sign-key", cmd_set_sign_key,
         "\tSet signing key for signed write command"},
+  { "exit", cmd_exit,
+        "\tExit this program"},
   { }
 };
 
@@ -1521,6 +1528,12 @@ static void cmd_help(struct client *cli, char *cmd_str)
   printf("Commands:\n");
   for (i = 0; command[i].cmd; i++)
     printf("\t%-15s\t%s\n", command[i].cmd, command[i].doc);
+}
+
+static void cmd_exit(struct client *cli, char *cmd_str)
+{
+    mainloop_exit_success();
+    printf(COLOR_GREEN "invoked mainloop_exit_succes...\n" COLOR_OFF );
 }
 
 static void prompt_read_cb(int fd, uint32_t events, void *user_data)
