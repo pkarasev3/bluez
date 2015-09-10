@@ -38,6 +38,7 @@
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <signal.h>
 
 #include "lib/bluetooth.h"
@@ -2405,6 +2406,15 @@ failed:
 	snprintf(buf, buf_len, "(unknown)");
 }
 
+static int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
+{
+    long int diff;
+    diff = (t2->tv_usec + 1000000 * t2->tv_sec) - (t1->tv_usec + 1000000 * t1->tv_sec);
+    result->tv_sec = diff / 1000000;
+    result->tv_usec = diff % 1000000;
+    return  ((int)(diff<0));
+}
+
 static int print_advertising_devices(int dd, uint8_t filter_type)
 {
 	unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
@@ -2437,6 +2447,7 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
 		evt_le_meta_event *meta;
 		le_advertising_info *info;
 		char addr[18];
+        }
 
 		while ((len = read(dd, buf, sizeof(buf))) < 0) {
 			if (errno == EINTR && signal_received == SIGINT) {
@@ -2489,8 +2500,8 @@ static struct option lescan_options[] = {
 	{ "whitelist",	0, 0, 'w' },
 	{ "discovery",	1, 0, 'd' },
 	{ "duplicates",	0, 0, 'D' },
-	{ 0, 0, 0, 0 }
-};
+    { "timeout",    1, 0, 't' },
+    { 0, 0, 0, 0 } };
 
 static const char *lescan_help =
 	"Usage:\n"
@@ -2499,11 +2510,13 @@ static const char *lescan_help =
 	"\tlescan [--whitelist] scan for address in the whitelist only\n"
 	"\tlescan [--discovery=g|l] enable general or limited discovery"
 		"procedure\n"
-	"\tlescan [--duplicates] don't filter duplicates\n";
+    "\tlescan [--duplicates] don't filter duplicates\n"
+    "\tlescan [--timeout=n] timeout after n seconds\n"
+    ;
 
 static void cmd_lescan(int dev_id, int argc, char **argv)
 {
-	int err, opt, dd;
+    int err, opt, dd;
 	uint8_t own_type = LE_PUBLIC_ADDRESS;
 	uint8_t scan_type = 0x01;
 	uint8_t filter_type = 0;
@@ -2511,6 +2524,7 @@ static void cmd_lescan(int dev_id, int argc, char **argv)
 	uint16_t interval = htobs(0x0010);
 	uint16_t window = htobs(0x0010);
 	uint8_t filter_dup = 0x01;
+    int timeout_secs = -1;
 
 	for_each_opt(opt, lescan_options, NULL) {
 		switch (opt) {
@@ -2532,13 +2546,15 @@ static void cmd_lescan(int dev_id, int argc, char **argv)
 				fprintf(stderr, "Unknown discovery procedure\n");
 				exit(1);
 			}
-
 			interval = htobs(0x0012);
 			window = htobs(0x0012);
 			break;
 		case 'D':
 			filter_dup = 0x00;
 			break;
+        case 't':
+            timeout_secs = atoi(optarg);
+            break;
 		default:
 			printf("%s", lescan_help);
 			return;

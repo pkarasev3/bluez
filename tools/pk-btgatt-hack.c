@@ -102,6 +102,8 @@ static struct tcpip_server* tcpip_server_create()
 
 static void tcpip_server_write_line(struct tcpip_server* serv)
 {
+    int wroteCount;
+
     printf(" attempting to write line...  ");
     if( serv->conn_s < 0 )
         serv->conn_s = accept(serv->list_s, NULL, NULL);
@@ -112,9 +114,13 @@ static void tcpip_server_write_line(struct tcpip_server* serv)
     if( serv->line_len <= 0 )
         return;
 
-    Writeline(serv->conn_s,serv->buffer,serv->line_len);
+    wroteCount = Writeline(serv->conn_s,serv->buffer,serv->line_len);
+    if( wroteCount == serv->line_len )
+        printf(COLOR_RED "Error, only wrote %d, expected %d\n" COLOR_OFF,wroteCount,serv->line_len);
+    else
+        printf(" success!\n ");
+
     serv->line_len = 0;
-    printf(" success!\n ");
 }
 
 static void tcpip_server_destroy(struct tcpip_server* serv)
@@ -494,7 +500,7 @@ static void inject_pk_hack(struct client *cli)
             fprintf(stdout,"r=%d..",result);
         }
 
-        if(0)
+        if(1)
             cmd_register_notify(cli,"0x0018");
     }   /** end inserted hack   */
 }
@@ -1915,7 +1921,7 @@ ssize_t Writeline(int sockd, const void *vptr, size_t n)
 	    buffer += nwritten;
     }
 
-    return n;
+    return nwritten;
 }
 
 
