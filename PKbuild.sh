@@ -9,7 +9,10 @@ fi
 #--disable-obex       \
 
 ./bootstrap && \
-    CPPFLAGS=" -g3 -Wall " CFLAGS=" -g3 -Wall " ./configure --enable-maintainer-mode \
+    CPPFLAGS=" -g3 -Wall -pthread "\
+    CFLAGS=" -pthread -g3 -Wall "\
+    LDFLAGS=" -lpthread "\
+    ./configure --enable-maintainer-mode \
 		--enable-debug \
 		--prefix=/usr \
 		--mandir=/usr/share/man \

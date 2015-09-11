@@ -40,6 +40,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <signal.h>
+#include <pthread.h>
 
 #include "lib/bluetooth.h"
 #include "lib/hci.h"
@@ -2406,6 +2407,7 @@ failed:
 	snprintf(buf, buf_len, "(unknown)");
 }
 
+
 static int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
 {
     long int diff;
@@ -2413,6 +2415,42 @@ static int timeval_subtract(struct timeval *result, struct timeval *t2, struct t
     result->tv_sec = diff / 1000000;
     result->tv_usec = diff % 1000000;
     return  ((int)(diff<0));
+}
+
+struct thread_info
+{
+    pthread_t thread_id;
+    long int timeout_secs;
+    int device_id;
+};
+
+static void* loop_for_timeout( void* arg )
+{
+    struct timeval time0, time1, time_diff;
+    long int timeout_secs;
+    struct thread_info* tinfo = arg;
+
+    timeout_secs = tinfo->timeout_secs;
+    if(timeout_secs <= 0)
+        return NULL;
+
+    gettimeofday(&time0,NULL);
+    while( 1 )
+    {
+        usleep(50*1000);
+        gettimeofday(&time1,NULL);
+        timeval_subtract(&time_diff,&time1,&time0);
+        if( time_diff.tv_sec >= timeout_secs )
+            break;
+    }
+    printf("%ld timeout requested, elapsed %ld\n",timeout_secs,time_diff.tv_sec);
+    if(tinfo->device_id >= 0)
+        hci_close_dev(tinfo->device_id);
+    fflush(stdout);
+    fflush(stderr);
+    free(tinfo);
+    system("killall -9 hcitool  &&  hciconfig hci0 reset");
+    return NULL;
 }
 
 static int print_advertising_devices(int dd, uint8_t filter_type)
@@ -2447,7 +2485,6 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
 		evt_le_meta_event *meta;
 		le_advertising_info *info;
 		char addr[18];
-        }
 
 		while ((len = read(dd, buf, sizeof(buf))) < 0) {
 			if (errno == EINTR && signal_received == SIGINT) {
@@ -2560,6 +2597,7 @@ static void cmd_lescan(int dev_id, int argc, char **argv)
 			return;
 		}
 	}
+
 	helper_arg(0, 1, &argc, &argv, lescan_help);
 
 	if (dev_id < 0)
@@ -2570,6 +2608,18 @@ static void cmd_lescan(int dev_id, int argc, char **argv)
 		perror("Could not open device");
 		exit(1);
 	}
+
+    if(timeout_secs>0)
+    {
+        int s;
+        struct thread_info* tinfo;
+        tinfo = malloc(sizeof(struct thread_info));
+        tinfo->timeout_secs = timeout_secs;
+        tinfo->device_id    = dd;
+        s = pthread_create(&tinfo->thread_id, NULL,
+                                   &loop_for_timeout, tinfo);
+        printf("pthread create result = %d\n",s);
+    }
 
 	err = hci_le_set_scan_parameters(dd, scan_type, interval, window,
 						own_type, filter_policy, 10000);
