@@ -46,6 +46,8 @@
 #include "src/shared/gatt-db.h"
 #include "src/shared/gatt-client.h"
 
+#include "pk-btgatt-tcpip.h"
+
 #define ATT_CID 4
 
 #define PRLOG(...) \
@@ -72,21 +74,6 @@ struct client {
   struct bt_gatt_client *gatt;
 
   unsigned int reliable_session_id;
-};
-
-#include <sys/socket.h>       /*  socket definitions        */
-#include <sys/types.h>        /*  socket types              */
-#include <arpa/inet.h>        /*  inet (3) funtions         */
-struct tcpip_server
-{
-    int       list_s;                /*  listening socket          */
-    int       conn_s;                /*  connection socket         */
-    short int port;                  /*  port number               */
-    struct    sockaddr_in servaddr;  /*  socket address structure  */
-    char      buffer[1024];          /*  character buffer          */
-    char     *endptr;                /*  for strtol()              */
-    int       loop_idx;
-    int       line_len;              /*  # of chars in line, before hitting \n */
 };
 
 struct tcpip_server*  global_server;
@@ -129,41 +116,7 @@ static void tcpip_server_destroy(struct tcpip_server* serv)
     free(serv);
 }
 
-#define LISTENQ        (1024)
 
-static struct tcpip_server*   setup_tcpip_server( struct tcpip_server*  serv)
-{
-    serv->port = 1337;
-    fprintf(stdout,"port = %d\n",serv->port);
-
-    if ( (serv->list_s = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
-    {
-        fprintf(stderr, "ECHOSERV: Error creating listening socket.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    memset(&serv->servaddr, 0, sizeof(serv->servaddr));
-    serv->servaddr.sin_family      = AF_INET;
-    serv->servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    serv->servaddr.sin_port        = htons(serv->port);
-
-    serv->line_len = 0;
-
-    if ( bind(serv->list_s, (struct sockaddr *) &serv->servaddr, sizeof(serv->servaddr)) < 0 )
-    {
-        fprintf(stderr, "ECHOSERV: Error calling bind()\n");
-        exit(EXIT_FAILURE);
-    }
-    if ( listen(serv->list_s, LISTENQ) < 0 )
-    {
-        fprintf(stderr, "ECHOSERV: Error calling listen()\n");
-        exit(EXIT_FAILURE);
-    }
-
-    serv->conn_s = -2;
-
-    return serv;
-}
 
 static void print_prompt(void)
 {
@@ -455,6 +408,14 @@ static void print_services_by_handle(struct client *cli, uint16_t handle)
 static void cmd_register_notify(struct client *cli, char *cmd_str);
 
 static void write_cb(bool success, uint8_t att_ecode, void *user_data);
+
+
+//void pk_sig_handler(int signo)
+//{
+//    if (signo == SIGUSR1)
+//        printf("received SIGUSR1\n");
+
+//}
 
 static void inject_pk_hack(struct client *cli)
 {
@@ -1913,9 +1874,9 @@ ssize_t Writeline(int sockd, const void *vptr, size_t n)
 	    if ( (nwritten = write(sockd, buffer, nleft)) <= 0 ) 
         {
 	        if ( errno == EINTR )
-		    nwritten = 0;
+                nwritten = 0;
 	        else
-		    return -1;
+                return -1;
 	    }
 	    nleft  -= nwritten;
 	    buffer += nwritten;
