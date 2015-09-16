@@ -32,6 +32,9 @@
 #include <getopt.h>
 #include <limits.h>
 #include <errno.h>
+#include <pthread.h>
+#include <sys/time.h>
+#include <stdatomic.h>  //sha-zam!
 
 #include "lib/bluetooth.h"
 #include "lib/hci.h"
@@ -222,6 +225,8 @@ static void service_removed_cb(struct gatt_db_attribute *attr, void *user_data)
   log_service_event(attr, "Service Removed");
 }
 
+void cmd_register_notify(struct client *cli, char *cmd_str);
+
 static struct client *client_create(int fd, uint16_t mtu)
 {
   struct client *cli;
@@ -405,8 +410,6 @@ static void print_services_by_handle(struct client *cli, uint16_t handle)
   gatt_db_foreach_service(cli->db, NULL, print_service, cli);
 }
 
-static void cmd_register_notify(struct client *cli, char *cmd_str);
-
 static void write_cb(bool success, uint8_t att_ecode, void *user_data);
 
 
@@ -417,9 +420,63 @@ static void write_cb(bool success, uint8_t att_ecode, void *user_data);
 
 //}
 
-static void inject_pk_hack(struct client *cli)
+struct thread_info
 {
-    if(1)
+    pthread_t thread_id;
+    long int timeout_secs;
+    struct client* cli;
+};
+
+atomic_int   RegistrationState  = ATOMIC_VAR_INIT(0);
+
+static void* loop_register_later( void* arg )
+{
+    struct timeval time0, time1, time_diff;
+    long int timeout_secs;
+    int      state;
+    struct thread_info* tinfo = arg;
+
+    state        = 1;
+    timeout_secs = 1;
+    atomic_store(&RegistrationState,state);
+
+    gettimeofday(&time0,NULL);
+    while( 1 )
+    {
+        usleep(50*1000);
+        gettimeofday(&time1,NULL);
+        timeval_subtract(&time_diff,&time1,&time0);
+        if( time_diff.tv_sec >= timeout_secs )
+            break;
+    }
+    printf(COLOR_BLUE "%ld timeout requested, elapsed %ld\n" COLOR_OFF,timeout_secs,time_diff.tv_sec);
+
+    printf(COLOR_MAGENTA "init raising %d...\n",SIGUSR1);
+    raise(SIGUSR1);
+    printf(COLOR_MAGENTA "done raising %d ! \n",SIGUSR1);
+
+    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+    while( state < 2 )
+    {
+        state = atomic_load(&RegistrationState);
+        usleep(200);
+    }
+    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+
+    cmd_register_notify(tinfo->cli,"0x0018");
+
+    fflush(stdout);
+    fflush(stderr);
+
+    state = 3;
+    atomic_store(&RegistrationState,state);
+    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+
+    return tinfo;
+}
+
+static void inject_pk_hack(struct client *cli)
+{    
     { /** begin inserted hack */
         uint16_t Xhandle = 0x0015;
         unsigned int idx = 0;
@@ -461,7 +518,17 @@ static void inject_pk_hack(struct client *cli)
             fprintf(stdout,"r=%d..",result);
         }
 
-        if(1)
+        {
+            int s;
+            struct thread_info* tinfo;
+            tinfo = malloc(sizeof(struct thread_info));
+            tinfo->cli    = cli;
+            s = pthread_create(&tinfo->thread_id, NULL,
+                               &loop_register_later, tinfo);
+            printf("pthread create result = %d\n",s);
+        }
+
+        if(0)
             cmd_register_notify(cli,"0x0018");
     }   /** end inserted hack   */
 }
@@ -1255,7 +1322,7 @@ static void register_notify_cb(uint16_t att_ecode, void *user_data)
   PRLOG("Registered notify handler!");
 }
 
-static void cmd_register_notify(struct client *cli, char *cmd_str)
+void cmd_register_notify(struct client *cli, char *cmd_str)
 {
   char *argv[2];
   int argc = 0;
@@ -1552,6 +1619,35 @@ failed:
   free(line);
 }
 
+void block_for_deferred_registration();
+
+void block_for_deferred_registration()
+{
+    int state = -1;
+    printf(COLOR_BLUE "in signal handler ...\n" COLOR_OFF);
+    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+    while( state < 1 )
+    {
+        state = atomic_load( &RegistrationState );
+        usleep(1000);
+    }
+    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+    state = 2;
+    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+    atomic_store(&RegistrationState,state);
+
+    while( state < 3 )
+    {
+        state = atomic_load( &RegistrationState );
+        usleep(1000);
+    }
+    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+    state = 4;
+    atomic_store(&RegistrationState,state);
+
+    printf(COLOR_RED " state = %d\n" COLOR_OFF, state);
+}
+
 static void signal_cb(int signum, void *user_data)
 {
   switch (signum) {
@@ -1559,6 +1655,9 @@ static void signal_cb(int signum, void *user_data)
   case SIGTERM:
     mainloop_quit();
     break;
+  case SIGUSR1:
+      block_for_deferred_registration();
+      break;
   default:
     break;
   }
@@ -1804,6 +1903,7 @@ int main(int argc, char *argv[])
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
+  sigaddset(&mask, SIGUSR1);
 
   mainloop_set_signal(&mask, signal_cb, NULL, NULL);
 
