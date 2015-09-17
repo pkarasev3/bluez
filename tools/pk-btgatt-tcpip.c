@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include "pk-btgatt-tcpip.h"
 
@@ -65,3 +66,89 @@ int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval 
     result->tv_usec = diff % 1000000;
     return  ((int)(diff<0));
 }
+
+int make_socket_non_blocking (int sfd)
+{
+  int flags, s;
+
+  flags = fcntl (sfd, F_GETFL, 0);
+  if (flags == -1)
+    {
+      perror ("fcntl");
+      return -1;
+    }
+
+  flags |= O_NONBLOCK;
+  s = fcntl (sfd, F_SETFL, flags);
+  if (s == -1)
+    {
+      perror ("fcntl");
+      return -1;
+    }
+
+  return 0;
+}
+
+ssize_t Readline(int sockd, void *vptr, size_t maxlen)
+{
+    ssize_t rc;
+    size_t  n;
+    char    c, *buffer;
+
+    buffer = vptr;
+
+    for ( n = 1; n < maxlen; n++ )
+    {
+            if ( (rc = read(sockd, &c, 1)) == 1 )
+        {
+                *buffer++ = c;
+                if ( c == '\n' )
+                    break;
+            }
+            else if ( rc == 0 )
+        {
+                if ( n == 1 )
+                        return 0;
+                else
+                        break;
+            }
+            else
+        {
+                if ( errno == EINTR )
+                        continue;
+                return -1;
+            }
+    }
+
+    *buffer = 0;
+    return n;
+}
+
+ssize_t Writeline(int sockd, const void *vptr, size_t n)
+{
+    size_t      nleft;
+    ssize_t     nwritten;
+    const char *buffer;
+
+    buffer = vptr;
+    nleft  = n;
+
+    while ( nleft > 0 )
+    {
+        nwritten = write(sockd, buffer, nleft);
+        //printf("nwritten = %04ld\n",nwritten);
+        if ( nwritten <= 0 )
+        {
+            if ( errno == EINTR )
+                return 0;
+            else
+                return -1;
+        }
+
+        nleft  -= nwritten;
+        buffer += nwritten;
+    }
+
+    return nwritten;
+}
+

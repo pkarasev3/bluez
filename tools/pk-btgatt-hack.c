@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <termios.h>
 #include <stdatomic.h>  //sha-zam!
 
 #include "lib/bluetooth.h"
@@ -67,8 +68,7 @@
 
 static bool verbose = false;
 
-ssize_t Readline(int fd, void *vptr, size_t maxlen);
-ssize_t Writeline(int fc, const void *vptr, size_t maxlen);
+
 
 struct client {
   int fd;
@@ -90,25 +90,32 @@ static struct tcpip_server* tcpip_server_create()
   return serv;
 }
 
+//if(0)
+//    printf(" attempting to write line...  ");
+
 static void tcpip_server_write_line(struct tcpip_server* serv)
+
 {
     int wroteCount;
 
-    printf(" attempting to write line...  ");
     if( serv->conn_s < 0 )
         serv->conn_s = accept(serv->list_s, NULL, NULL);
 
     if( serv->conn_s < 0 )
+    {
         printf(" failed to accept() connection! \n ");
+        serv->line_len = 0;
+        return;
+    }
 
     if( serv->line_len <= 0 )
         return;
 
     wroteCount = Writeline(serv->conn_s,serv->buffer,serv->line_len);
-    if( wroteCount == serv->line_len )
+    if( wroteCount != serv->line_len )
         printf(COLOR_RED "Error, only wrote %d, expected %d\n" COLOR_OFF,wroteCount,serv->line_len);
     else
-        printf(" success!\n ");
+        {/*usleep(500);*/}          /*printf(" success!\n ") ;*/
 
     serv->line_len = 0;
 }
@@ -435,10 +442,14 @@ static void* loop_register_later( void* arg )
     long int timeout_secs;
     int      state;
     struct thread_info* tinfo = arg;
+    FILE *fakestdin;
+
+    fakestdin    = fdopen(STDIN_FILENO, "a+");
+    if( !fakestdin )
+        exit(EXIT_FAILURE);
 
     state        = 1;
-    timeout_secs = 1;
-    atomic_store(&RegistrationState,state);
+    timeout_secs = 5;
 
     gettimeofday(&time0,NULL);
     while( 1 )
@@ -449,29 +460,66 @@ static void* loop_register_later( void* arg )
         if( time_diff.tv_sec >= timeout_secs )
             break;
     }
-    printf(COLOR_BLUE "%ld timeout requested, elapsed %ld\n" COLOR_OFF,timeout_secs,time_diff.tv_sec);
+    //printf(COLOR_BLUE "%ld timeout requested, elapsed %ld\n" COLOR_OFF,timeout_secs,time_diff.tv_sec);
 
-    printf(COLOR_MAGENTA "init raising %d...\n",SIGUSR1);
-    raise(SIGUSR1);
-    printf(COLOR_MAGENTA "done raising %d ! \n",SIGUSR1);
+    //printf(COLOR_MAGENTA "init raising %d...\n" COLOR_OFF,SIGUSR1);
+    atomic_store(&RegistrationState,state);
 
     printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-    while( state < 2 )
-    {
-        state = atomic_load(&RegistrationState);
-        usleep(200);
-    }
-    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-
-    cmd_register_notify(tinfo->cli,"0x0018");
 
     fflush(stdout);
     fflush(stderr);
+    fflush(stdin);
 
-    state = 3;
-    atomic_store(&RegistrationState,state);
-    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
 
+    //    raise(SIGUSR1);
+    //    printf(COLOR_MAGENTA "done raising %d ! \n",SIGUSR1);
+
+    //    while( state < 2 )
+    //    {
+    //        state = atomic_load(&RegistrationState);
+    //        usleep(200);
+    //    }
+    //    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+
+    {
+//        static struct termios oldt, newt;
+//        /*tcgetattr gets the parameters of the current terminal
+//       STDIN_FILENO will tell tcgetattr that it should write the settings
+//       of stdin to oldt*/
+//        tcgetattr( STDIN_FILENO, &oldt);
+//        /*now the settings will be copied*/
+//        newt = oldt;
+
+//        /*ICANON normally takes care that one line at a time will be processed
+//       that means it will return if it sees a "\n" or an EOF or an EOL*/
+//        newt.c_lflag &= ~(ICANON);
+
+//        /*Those new settings will be set to STDIN
+//       TCSANOW tells tcsetattr to change attributes immediately. */
+//        tcsetattr( STDIN_FILENO, TCSANOW, &newt);
+
+//        /*restore the old settings*/
+//        tcsetattr( STDIN_FILENO, TCSANOW, &oldt);
+
+        //fputs("register-notify 0x0018",fakestdin);
+        //fclose(fakestdin);
+        //fputc( EOF, fakestdin );
+        //fputc( '\0', fakestdin );
+
+        //        system("/bin/stty cooked");
+        //fprintf(fakestdin,);
+        cmd_register_notify(tinfo->cli,"0x0018");
+
+        fflush(stdin);
+        fflush(stdout);
+        fflush(stderr);
+
+        state = 0;
+        printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+        atomic_store(&RegistrationState,state);
+
+    }
     return tinfo;
 }
 
@@ -1281,11 +1329,21 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
           uint16_t length, void *user_data)
 {
   int i;
+  int state;
+
+  state = atomic_load( &RegistrationState );
+  while( 0 != state )
+  {
+      usleep(1000*5);
+      state = atomic_load( &RegistrationState );
+      fprintf(stderr," state = %d ...\n", state);
+      fflush(stderr);
+  }
 
   printf(" global_serv->port=%d ... ",global_server->port);
   printf("NOTIFY_CB: ");
 
-  printf("\n\tHandle Value Not/Ind: 0x%04x - ", value_handle);
+  printf("\n HandleValue Not/Ind: 0x%04x - ", value_handle);
 
   if (length == 0) {
     PRLOG("(0 bytes)\n");
@@ -1301,13 +1359,13 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
     printf("%02x ", value[i]);
     if( (i>0) && (value[i-1]==0x0d) && (value[i]==0x0a) )
     {
-        printf("got new line of length %03d\n",global_server->line_len);
+        if(0)
+            printf("got new line of length %03d\n",global_server->line_len);
         tcpip_server_write_line( global_server );
 
         global_server->line_len = 0;
     }
-  }
-
+  }  
   PRLOG("\n");
 }
 
@@ -1619,34 +1677,34 @@ failed:
   free(line);
 }
 
-void block_for_deferred_registration();
+//void block_for_deferred_registration();
 
-void block_for_deferred_registration()
-{
-    int state = -1;
-    printf(COLOR_BLUE "in signal handler ...\n" COLOR_OFF);
-    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-    while( state < 1 )
-    {
-        state = atomic_load( &RegistrationState );
-        usleep(1000);
-    }
-    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-    state = 2;
-    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-    atomic_store(&RegistrationState,state);
+//void block_for_deferred_registration()
+//{
+//    int state = -1;
+//    printf(COLOR_BLUE "in signal handler ...\n" COLOR_OFF);
+//    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+//    while( state < 1 )
+//    {
+//        state = atomic_load( &RegistrationState );
+//        usleep(1000);
+//    }
+//    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+//    state = 2;
+//    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+//    atomic_store(&RegistrationState,state);
 
-    while( state < 3 )
-    {
-        state = atomic_load( &RegistrationState );
-        usleep(1000);
-    }
-    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-    state = 4;
-    atomic_store(&RegistrationState,state);
+//    while( state < 3 )
+//    {
+//        state = atomic_load( &RegistrationState );
+//        usleep(1000);
+//    }
+//    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+//    state = 4;
+//    atomic_store(&RegistrationState,state);
 
-    printf(COLOR_RED " state = %d\n" COLOR_OFF, state);
-}
+//    printf(COLOR_RED " state = %d\n" COLOR_OFF, state);
+//}
 
 static void signal_cb(int signum, void *user_data)
 {
@@ -1655,9 +1713,9 @@ static void signal_cb(int signum, void *user_data)
   case SIGTERM:
     mainloop_quit();
     break;
-  case SIGUSR1:
-      block_for_deferred_registration();
-      break;
+//  case SIGUSR1:
+//      block_for_deferred_registration();
+//      break;
   default:
     break;
   }
@@ -1903,7 +1961,7 @@ int main(int argc, char *argv[])
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
-  sigaddset(&mask, SIGUSR1);
+  //sigaddset(&mask, SIGUSR1);
 
   mainloop_set_signal(&mask, signal_cb, NULL, NULL);
 
@@ -1921,69 +1979,6 @@ int main(int argc, char *argv[])
 }
 
 
-#define LISTENQ        (1024)  
-#include <sys/socket.h>
-#include <errno.h>
-
-ssize_t Readline(int sockd, void *vptr, size_t maxlen) 
-{
-    ssize_t rc;
-    size_t  n;
-    char    c, *buffer;
-
-    buffer = vptr;
-
-    for ( n = 1; n < maxlen; n++ ) 
-    {	
-	    if ( (rc = read(sockd, &c, 1)) == 1 ) 
-        {
-	        *buffer++ = c;
-	        if ( c == '\n' )
-		    break;
-	    }
-	    else if ( rc == 0 ) 
-        {
-	        if ( n == 1 )
-        		return 0;
-	        else
-        		break;
-	    }
-	    else 
-        {
-	        if ( errno == EINTR )
-        		continue;
-	        return -1;
-	    }
-    }
-
-    *buffer = 0;
-    return n;
-}
-
-ssize_t Writeline(int sockd, const void *vptr, size_t n) 
-{
-    size_t      nleft;
-    ssize_t     nwritten;
-    const char *buffer;
-
-    buffer = vptr;
-    nleft  = n;
-
-    while ( nleft > 0 ) 
-    {
-	    if ( (nwritten = write(sockd, buffer, nleft)) <= 0 ) 
-        {
-	        if ( errno == EINTR )
-                nwritten = 0;
-	        else
-                return -1;
-	    }
-	    nleft  -= nwritten;
-	    buffer += nwritten;
-    }
-
-    return nwritten;
-}
 
 
 
