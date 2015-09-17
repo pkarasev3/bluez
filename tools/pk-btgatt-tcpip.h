@@ -21,5 +21,14 @@ int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval 
 
 struct tcpip_server*   setup_tcpip_server(struct tcpip_server*  serv);
 
+#define LISTENQ        (1024)
+#include <sys/socket.h>
+#include <errno.h>
+
+ssize_t Readline(int fd, void *vptr, size_t maxlen);
+ssize_t Writeline(int fc, const void *vptr, size_t maxlen);
+
+
+int make_socket_non_blocking (int sfd);
 
 #endif
