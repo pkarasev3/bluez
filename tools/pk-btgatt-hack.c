@@ -473,44 +473,8 @@ static void* loop_register_later( void* arg )
     fflush(stderr);
     fflush(stdin);
 
-
-    //    raise(SIGUSR1);
-    //    printf(COLOR_MAGENTA "done raising %d ! \n",SIGUSR1);
-
-    //    while( state < 2 )
-    //    {
-    //        state = atomic_load(&RegistrationState);
-    //        usleep(200);
-    //    }
-    //    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-
     {
-//        static struct termios oldt, newt;
-//        /*tcgetattr gets the parameters of the current terminal
-//       STDIN_FILENO will tell tcgetattr that it should write the settings
-//       of stdin to oldt*/
-//        tcgetattr( STDIN_FILENO, &oldt);
-//        /*now the settings will be copied*/
-//        newt = oldt;
-
-//        /*ICANON normally takes care that one line at a time will be processed
-//       that means it will return if it sees a "\n" or an EOF or an EOL*/
-//        newt.c_lflag &= ~(ICANON);
-
-//        /*Those new settings will be set to STDIN
-//       TCSANOW tells tcsetattr to change attributes immediately. */
-//        tcsetattr( STDIN_FILENO, TCSANOW, &newt);
-
-//        /*restore the old settings*/
-//        tcsetattr( STDIN_FILENO, TCSANOW, &oldt);
-
-        //fputs("register-notify 0x0018",fakestdin);
-        //fclose(fakestdin);
-        //fputc( EOF, fakestdin );
-        //fputc( '\0', fakestdin );
-
-        //        system("/bin/stty cooked");
-        //fprintf(fakestdin,);
+//        cmd_register_notify(tinfo->cli,"0x0012");
         cmd_register_notify(tinfo->cli,"0x0018");
 
         fflush(stdin);
@@ -559,8 +523,7 @@ int  write_string_to_handle(
 static void inject_pk_hack(struct client *cli)
 {    
     {
-        uint16_t Xhandle = 0x0015;
-
+        uint16_t Xhandle = 0x0017;
         const char cmd1[] = {'i','n','v','c',0x0d,0x0a};
         const char cmd2[] = {'i','n','v','8',0x0d,0x0a};
         //const char cmd3[] = {'i','n','v','d',0x0d,0x0a};
@@ -569,7 +532,7 @@ static void inject_pk_hack(struct client *cli)
         write_string_to_handle(cli,cmd2,sizeof(cmd2),Xhandle);
         //write_string_to_handle(cli,cmd3,sizeof(cmd3),Xhandle);
 
-        {
+        if(0){
             int s;
             struct thread_info* tinfo;
             tinfo = malloc(sizeof(struct thread_info));
@@ -1362,14 +1325,15 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
 
   for (i = 0; i < length; i++)
   {
-    global_server->buffer[ global_server->line_len ] = value[i];
-    global_server->line_len += 1;
+    //global_server->buffer[ global_server->line_len ] = value[i];
+    //global_server->line_len += 1;
     printf("%02x ", value[i]);
-    if( (i>0) && (value[i-1]==0x0d) && (value[i]==0x0a) )
+    if( 0 && (i>0) && (value[i-1]==0x0d) && (value[i]==0x0a) )
     {
         if(0)
             printf("got new line of length %03d\n",global_server->line_len);
-        tcpip_server_write_line( global_server );
+         if(0)
+             tcpip_server_write_line( global_server );
 
         global_server->line_len = 0;
     }
@@ -1815,8 +1779,10 @@ int main(int argc, char *argv[])
   struct client *cli;
   struct tcpip_server* PKserv;
 
+  if(0) {
   PKserv        = tcpip_server_create();
   global_server = setup_tcpip_server(PKserv);
+    }
 
   fprintf(stdout, "BLAH BLAH BLAH %d\n",__LINE__);
 
@@ -1953,7 +1919,8 @@ int main(int argc, char *argv[])
 
   client_destroy(cli);
 
-  tcpip_server_destroy(PKserv);
+  if(0)
+      tcpip_server_destroy(PKserv);
 
   return EXIT_SUCCESS;
 }
