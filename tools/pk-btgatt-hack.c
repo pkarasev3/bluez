@@ -81,6 +81,8 @@ struct client {
 
 struct tcpip_server*  global_server;
 
+struct client*  global_client;
+
 static struct tcpip_server* tcpip_server_create()
 {
   struct tcpip_server* serv;
@@ -523,48 +525,49 @@ static void* loop_register_later( void* arg )
     return tinfo;
 }
 
+static
+int  write_string_to_handle(
+        struct client* cli,
+        const char* cmd,
+        size_t sz,
+        uint16_t Xhandle    )
+{
+    unsigned int idx =  0;
+    int result       = -1;
+    usleep(100);
+    while( idx < sz )
+    {
+        uint8_t val;
+        val    = cmd[idx];
+        result = bt_gatt_client_write_value(
+                      cli->gatt,
+                      Xhandle,
+                      &val,
+                      1,
+                      write_cb,
+                      NULL, NULL);
+        idx++;
+        if( !result )
+        {
+            fprintf(stderr, "failed writing %s to handle %d\n",cmd,Xhandle);
+            break;
+        }
+    }
+    return result;
+}
+
 static void inject_pk_hack(struct client *cli)
 {    
-    { /** begin inserted hack */
+    {
         uint16_t Xhandle = 0x0015;
-        unsigned int idx = 0;
+
         const char cmd1[] = {'i','n','v','c',0x0d,0x0a};
         const char cmd2[] = {'i','n','v','8',0x0d,0x0a};
+        //const char cmd3[] = {'i','n','v','d',0x0d,0x0a};
 
-        sleep(1);
-        while( idx < sizeof(cmd1) )
-        {
-            uint8_t val;
-            int result;
-            val = cmd1[idx];
-            result = !bt_gatt_client_write_value(
-                          cli->gatt,
-                          Xhandle,
-                          &val,
-                          1,
-                          write_cb,
-                          NULL, NULL);
-            idx++;
-            fprintf(stdout,"r=%d..",result);
-        }
-
-        sleep(1);
-        idx = 0;
-        while( idx < sizeof(cmd2) )
-        {
-            uint8_t val;
-            int result;
-            val = cmd2[idx];
-            result = !bt_gatt_client_write_value(
-                          cli->gatt,
-                          Xhandle,
-                          &val,
-                          1,
-                          write_cb,
-                          NULL, NULL);
-            idx++;
-            fprintf(stdout,"r=%d..",result);
-        }
+        write_string_to_handle(cli,cmd1,sizeof(cmd1),Xhandle);
+        write_string_to_handle(cli,cmd2,sizeof(cmd2),Xhandle);
+        //write_string_to_handle(cli,cmd3,sizeof(cmd3),Xhandle);
 
         {
             int s;
@@ -575,10 +578,8 @@ static void inject_pk_hack(struct client *cli)
                                &loop_register_later, tinfo);
             printf("pthread create result = %d\n",s);
         }
-
-        if(0)
-            cmd_register_notify(cli,"0x0018");
-    }   /** end inserted hack   */
+        global_client = cli;
+    }
 }
 
 static void ready_cb(bool success, uint8_t att_ecode, void *user_data)
@@ -1340,6 +1341,13 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
       fflush(stderr);
   }
 
+  if(0)
+  {
+      unsigned int Xhandle = 0x0015;
+      const char cmd3[] = {'i','n','v','d',0x0d,0x0a};
+      write_string_to_handle(global_client,cmd3,sizeof(cmd3),Xhandle);
+  }
+
   printf(" global_serv->port=%d ... ",global_server->port);
   printf("NOTIFY_CB: ");
 
@@ -1367,6 +1375,7 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
     }
   }  
   PRLOG("\n");
+
 }
 
 static void register_notify_cb(uint16_t att_ecode, void *user_data)
@@ -1677,34 +1686,6 @@ failed:
   free(line);
 }
 
-//void block_for_deferred_registration();
-
-//void block_for_deferred_registration()
-//{
-//    int state = -1;
-//    printf(COLOR_BLUE "in signal handler ...\n" COLOR_OFF);
-//    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-//    while( state < 1 )
-//    {
-//        state = atomic_load( &RegistrationState );
-//        usleep(1000);
-//    }
-//    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-//    state = 2;
-//    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-//    atomic_store(&RegistrationState,state);
-
-//    while( state < 3 )
-//    {
-//        state = atomic_load( &RegistrationState );
-//        usleep(1000);
-//    }
-//    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-//    state = 4;
-//    atomic_store(&RegistrationState,state);
-
-//    printf(COLOR_RED " state = %d\n" COLOR_OFF, state);
-//}
 
 static void signal_cb(int signum, void *user_data)
 {
@@ -1960,8 +1941,7 @@ int main(int argc, char *argv[])
 
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
-  sigaddset(&mask, SIGTERM);
-  //sigaddset(&mask, SIGUSR1);
+  sigaddset(&mask, SIGTERM);  
 
   mainloop_set_signal(&mask, signal_cb, NULL, NULL);
 
