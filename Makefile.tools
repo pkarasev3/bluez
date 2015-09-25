@@ -261,7 +261,7 @@ noinst_PROGRAMS += tools/bdaddr tools/avinfo tools/avtest \
 			tools/eddystone tools/ibeacon \
 			tools/btgatt-client tools/btgatt-server \
 			tools/test-runner tools/check-selftest \
-            tools/pk-btgatt-hack 
+            tools/pk-btgatt-hack
 
 tools_bdaddr_SOURCES = tools/bdaddr.c src/oui.h src/oui.c
 tools_bdaddr_LDADD = lib/libbluetooth-internal.la @UDEV_LIBS@
@@ -329,6 +329,7 @@ tools_btgatt_client_LDADD = src/libshared-mainloop.la \
 
 tools_pk_btgatt_hack_SOURCES = tools/pk-btgatt-hack.c \
                                tools/pk-btgatt-tcpip.c \
+                               tools/pk-btgatt-rwcfg.c \
                                src/uuid-helper.c
 
 tools_pk_btgatt_hack_LDADD   = src/libshared-mainloop.la \

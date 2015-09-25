@@ -11,6 +11,7 @@
 #include <fcntl.h>
 
 #include "pk-btgatt-tcpip.h"
+#include "pk-btgatt-rwcfg.h"
 
 #define LISTENQ        (1024)
 
@@ -152,3 +153,44 @@ ssize_t Writeline(int sockd, const void *vptr, size_t n)
     return nwritten;
 }
 
+
+struct tcpip_server* tcpip_server_create()
+{
+  struct tcpip_server* serv;
+
+  serv = new0(struct tcpip_server, 1);
+
+  return serv;
+}
+
+void tcpip_server_write_line(struct tcpip_server* serv)
+{
+  int wroteCount;
+
+  if( serv->conn_s < 0 )
+    serv->conn_s = accept(serv->list_s, NULL, NULL);
+
+  if( serv->conn_s < 0 )
+  {
+    printf(" failed to accept() connection! \n ");
+    serv->line_len = 0;
+    return;
+  }
+
+  if( serv->line_len <= 0 )
+    return;
+
+  wroteCount = Writeline(serv->conn_s,serv->buffer,serv->line_len);
+  if( wroteCount != serv->line_len )
+    printf(COLOR_RED "Error, only wrote %d, expected %d\n" COLOR_OFF,wroteCount,serv->line_len);
+  else
+  {/*usleep(500);*/}          /*printf(" success!\n ") ;*/
+
+  serv->line_len = 0;
+}
+
+void tcpip_server_destroy(struct tcpip_server* serv)
+{
+  close(serv->conn_s);
+  free(serv);
+}
