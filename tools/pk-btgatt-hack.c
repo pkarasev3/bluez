@@ -44,12 +44,13 @@
 #include "lib/uuid.h"
 
 #include "src/shared/mainloop.h"
-#include "src/shared/util.h"
+//#include "src/shared/util.h"
 #include "src/shared/att.h"
 #include "src/shared/queue.h"
 #include "src/shared/gatt-db.h"
 #include "src/shared/gatt-client.h"
 
+#include "pk-btgatt-rwcfg.h"
 #include "pk-btgatt-tcpip.h"
 
 #define ATT_CID 4
@@ -57,14 +58,6 @@
 #define PRLOG(...) \
   printf(__VA_ARGS__); print_prompt();
 
-#define COLOR_OFF	"\x1B[0m"
-#define COLOR_RED	"\x1B[0;91m"
-#define COLOR_GREEN	"\x1B[0;92m"
-#define COLOR_YELLOW	"\x1B[0;93m"
-#define COLOR_BLUE	"\x1B[0;94m"
-#define COLOR_MAGENTA	"\x1B[0;95m"
-#define COLOR_BOLDGRAY	"\x1B[1;30m"
-#define COLOR_BOLDWHITE	"\x1B[1;37m"
 
 static bool verbose = false;
 
@@ -82,51 +75,6 @@ struct client {
 struct tcpip_server*  global_server;
 
 struct client*  global_client;
-
-static struct tcpip_server* tcpip_server_create()
-{
-  struct tcpip_server* serv;
-
-  serv = new0(struct tcpip_server, 1);
-
-  return serv;
-}
-
-//if(0)
-//    printf(" attempting to write line...  ");
-
-static void tcpip_server_write_line(struct tcpip_server* serv)
-
-{
-    int wroteCount;
-
-    if( serv->conn_s < 0 )
-        serv->conn_s = accept(serv->list_s, NULL, NULL);
-
-    if( serv->conn_s < 0 )
-    {
-        printf(" failed to accept() connection! \n ");
-        serv->line_len = 0;
-        return;
-    }
-
-    if( serv->line_len <= 0 )
-        return;
-
-    wroteCount = Writeline(serv->conn_s,serv->buffer,serv->line_len);
-    if( wroteCount != serv->line_len )
-        printf(COLOR_RED "Error, only wrote %d, expected %d\n" COLOR_OFF,wroteCount,serv->line_len);
-    else
-        {/*usleep(500);*/}          /*printf(" success!\n ") ;*/
-
-    serv->line_len = 0;
-}
-
-static void tcpip_server_destroy(struct tcpip_server* serv)
-{
-    close(serv->conn_s);
-    free(serv);
-}
 
 
 
@@ -444,11 +392,6 @@ static void* loop_register_later( void* arg )
     long int timeout_secs;
     int      state;
     struct thread_info* tinfo = arg;
-    FILE *fakestdin;
-
-    fakestdin    = fdopen(STDIN_FILENO, "a+");
-    if( !fakestdin )
-        exit(EXIT_FAILURE);
 
     state        = 1;
     timeout_secs = 5;
@@ -462,66 +405,25 @@ static void* loop_register_later( void* arg )
         if( time_diff.tv_sec >= timeout_secs )
             break;
     }
-    //printf(COLOR_BLUE "%ld timeout requested, elapsed %ld\n" COLOR_OFF,timeout_secs,time_diff.tv_sec);
 
-    //printf(COLOR_MAGENTA "init raising %d...\n" COLOR_OFF,SIGUSR1);
     atomic_store(&RegistrationState,state);
-
     printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
 
     fflush(stdout);
     fflush(stderr);
     fflush(stdin);
 
-
-    //    raise(SIGUSR1);
-    //    printf(COLOR_MAGENTA "done raising %d ! \n",SIGUSR1);
-
-    //    while( state < 2 )
-    //    {
-    //        state = atomic_load(&RegistrationState);
-    //        usleep(200);
-    //    }
-    //    printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
-
     {
-//        static struct termios oldt, newt;
-//        /*tcgetattr gets the parameters of the current terminal
-//       STDIN_FILENO will tell tcgetattr that it should write the settings
-//       of stdin to oldt*/
-//        tcgetattr( STDIN_FILENO, &oldt);
-//        /*now the settings will be copied*/
-//        newt = oldt;
-
-//        /*ICANON normally takes care that one line at a time will be processed
-//       that means it will return if it sees a "\n" or an EOF or an EOL*/
-//        newt.c_lflag &= ~(ICANON);
-
-//        /*Those new settings will be set to STDIN
-//       TCSANOW tells tcsetattr to change attributes immediately. */
-//        tcsetattr( STDIN_FILENO, TCSANOW, &newt);
-
-//        /*restore the old settings*/
-//        tcsetattr( STDIN_FILENO, TCSANOW, &oldt);
-
-        //fputs("register-notify 0x0018",fakestdin);
-        //fclose(fakestdin);
-        //fputc( EOF, fakestdin );
-        //fputc( '\0', fakestdin );
-
-        //        system("/bin/stty cooked");
-        //fprintf(fakestdin,);
         cmd_register_notify(tinfo->cli,"0x0018");
 
         fflush(stdin);
         fflush(stdout);
         fflush(stderr);
 
-        state = 0;
-        printf(COLOR_BLUE " state = %d\n" COLOR_OFF, state);
+        state = 0;        
         atomic_store(&RegistrationState,state);
-
     }
+
     return tinfo;
 }
 
@@ -567,7 +469,6 @@ static void inject_pk_hack(struct client *cli)
 
         write_string_to_handle(cli,cmd1,sizeof(cmd1),Xhandle);
         write_string_to_handle(cli,cmd2,sizeof(cmd2),Xhandle);
-        //write_string_to_handle(cli,cmd3,sizeof(cmd3),Xhandle);
 
         {
             int s;

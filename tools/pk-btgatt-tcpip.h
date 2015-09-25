@@ -5,6 +5,11 @@
 #include <sys/types.h>        /*  socket types              */
 #include <sys/time.h>
 
+#define LISTENQ        (1024)
+#include <sys/socket.h>
+#include <errno.h>
+#include "src/shared/util.h"
+
 struct tcpip_server
 {
     int       list_s;                /*  listening socket          */
@@ -21,13 +26,14 @@ int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval 
 
 struct tcpip_server*   setup_tcpip_server(struct tcpip_server*  serv);
 
-#define LISTENQ        (1024)
-#include <sys/socket.h>
-#include <errno.h>
+struct tcpip_server* tcpip_server_create();
+
+void tcpip_server_write_line(struct tcpip_server* serv);
+
+void tcpip_server_destroy(struct tcpip_server* serv);
 
 ssize_t Readline(int fd, void *vptr, size_t maxlen);
 ssize_t Writeline(int fc, const void *vptr, size_t maxlen);
-
 
 int make_socket_non_blocking (int sfd);
 
