@@ -327,6 +327,7 @@ tools_btgatt_client_SOURCES = tools/btgatt-client.c src/uuid-helper.c
 tools_btgatt_client_LDADD = src/libshared-mainloop.la \
 						lib/libbluetooth-internal.la
 
+tools_pk_btgatt_hack_CFLAGS  = $(AM_CFLAGS) -Wno-error=unused-function  -Wno-error=unused-variable
 tools_pk_btgatt_hack_SOURCES = tools/pk-btgatt-hack.c \
                                tools/pk-btgatt-tcpip.c \
                                tools/pk-btgatt-rwcfg.c \

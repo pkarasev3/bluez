@@ -70,12 +70,33 @@ struct client {
   struct bt_gatt_client *gatt;
 
   unsigned int reliable_session_id;
+
+  //////////////////////////////////
+  struct readwrite_config  rwcfg;
 };
 
+/////////////////////////////////////////////////////////
 struct tcpip_server*  global_server;
+/////////////////////////////////////////////////////////
+struct client*        global_client;
+/////////////////////////////////////////////////////////
 
-struct client*  global_client;
-
+static struct option main_options[] =
+{
+  { "tcpip-packet-sz",  1, 0, 'Z' },
+  { "command-init",     1, 0, 'C' },
+  { "handle-notify",    1, 0, 'N' },
+  { "handle-write",     1, 0, 'W' },
+  { "tcpip-port",       1, 0, 'P' },
+  { "index",            1, 0, 'i' },
+  { "dest",             1, 0, 'd' },
+  { "type",             1, 0, 't' },
+  { "mtu",   		    1, 0, 'm' },
+  { "security-level",	1, 0, 's' },
+  { "verbose",          0, 0, 'v' },
+  { "help",             0, 0, 'h' },
+  { }
+};
 
 
 static void print_prompt(void)
@@ -193,6 +214,8 @@ static struct client *client_create(int fd, uint16_t mtu)
     fprintf(stderr, "Failed to allocate memory for client\n");
     return NULL;
   }
+
+  initialize_rwcfg(&cli->rwcfg);
 
   cli->att = bt_att_new(fd, false);
   if (!cli->att) {
@@ -369,14 +392,7 @@ static void print_services_by_handle(struct client *cli, uint16_t handle)
 
 static void write_cb(bool success, uint8_t att_ecode, void *user_data);
 
-
-//void pk_sig_handler(int signo)
-//{
-//    if (signo == SIGUSR1)
-//        printf("received SIGUSR1\n");
-
-//}
-
+///////////////////////////////////////
 struct thread_info
 {
     pthread_t thread_id;
@@ -384,8 +400,10 @@ struct thread_info
     struct client* cli;
 };
 
+////////////////////////////////////////
 atomic_int   RegistrationState  = ATOMIC_VAR_INIT(0);
 
+////////////////////////////////////////
 static void* loop_register_later( void* arg )
 {
     struct timeval time0, time1, time_diff;
@@ -1671,38 +1689,8 @@ static int l2cap_le_att_connect(bdaddr_t *src, bdaddr_t *dst, uint8_t dst_type,
   return sock;
 }
 
-static void usage(void)
-{
-  printf("btgatt-client\n");
-  printf("Usage:\n\tbtgatt-client [options]\n");
-
-  printf("Options:\n"
-    "\t-i, --index <id>\t\tSpecify adapter index, e.g. hci0\n"
-    "\t-d, --dest <addr>\t\tSpecify the destination address\n"
-    "\t-t, --type [random|public] \tSpecify the LE address type\n"
-    "\t-m, --mtu <mtu> \t\tThe ATT MTU to use\n"
-    "\t-s, --security-level <sec> \tSet security level (low|"
-                "medium|high)\n"
-    "\t-v, --verbose\t\t\tEnable extra logging\n"
-    "\t-h, --help\t\t\tDisplay help\n");
-}
-
-static struct option main_options[] = {
-  { "index",		1, 0, 'i' },
-  { "dest",		1, 0, 'd' },
-  { "type",		1, 0, 't' },
-  { "mtu",		1, 0, 'm' },
-  { "security-level",	1, 0, 's' },
-  { "verbose",		0, 0, 'v' },
-  { "help",		0, 0, 'h' },
-  { }
-};
-
-#if defined(NO_MAIN_IN_PK_C)
-int init_pk_hack(int argc, char* argv[] )
-#else
+/////////////////////////////////////////////////////////
 int main(int argc, char *argv[])
-#endif
 {   
   int opt;
   int sec = BT_SECURITY_LOW;
@@ -1713,84 +1701,105 @@ int main(int argc, char *argv[])
   int dev_id = -1;
   int fd;
   sigset_t mask;
+
+  /////////////////////////////////////
   struct client *cli;
   struct tcpip_server* PKserv;
+  struct readwrite_config  RWcfgTemp;
 
   PKserv        = tcpip_server_create();
-  global_server = setup_tcpip_server(PKserv);
 
-  fprintf(stdout, "BLAH BLAH BLAH %d\n",__LINE__);
+  fprintf(stdout, "%s %d\n",__FILE__,__LINE__);
 
-  while ((opt = getopt_long(argc, argv, "+hvs:m:t:d:i:",
+  initialize_rwcfg(&RWcfgTemp);
+
+  while ((opt = getopt_long(argc, argv, "+hvs:m:t:d:i:P:W:N:C:Z:",
             main_options, NULL)) != -1) {
     switch (opt) {
-    case 'h':
-      usage();
-      return EXIT_SUCCESS;
-    case 'v':
-      verbose = true;
-      break;
-    case 's':
-      if (strcmp(optarg, "low") == 0)
-        sec = BT_SECURITY_LOW;
-      else if (strcmp(optarg, "medium") == 0)
-        sec = BT_SECURITY_MEDIUM;
-      else if (strcmp(optarg, "high") == 0)
-        sec = BT_SECURITY_HIGH;
-      else {
-        fprintf(stderr, "Invalid security level\n");
-        return EXIT_FAILURE;
-      }
-      break;
-    case 'm': {
-      int arg;
+      case 'h':
+        usage();
+        return EXIT_SUCCESS;
+      case 'v':
+        verbose = true;
+        break;
+      case 'P':
+        RWcfgTemp.tcpip_Port = atoi(optarg);
+        if(RWcfgTemp.tcpip_Port<=0)
+          RWcfgTemp.tcpip_Enabled = 0;
+        break;
+      case 'W':
+        RWcfgTemp.handle_Write = atoi(optarg);
+        break;
+      case 'N':
+        RWcfgTemp.handle_Read = atoi(optarg);
+        break;
+      case 'C':
+        cmd_from_arg(&RWcfgTemp,optarg);
+        break;
+      case 'Z':
+        RWcfgTemp.tcpip_PacketSize = atoi(optarg);
+        break;
+      case 's':
+        if (strcmp(optarg, "low") == 0)
+          sec = BT_SECURITY_LOW;
+        else if (strcmp(optarg, "medium") == 0)
+          sec = BT_SECURITY_MEDIUM;
+        else if (strcmp(optarg, "high") == 0)
+          sec = BT_SECURITY_HIGH;
+        else {
+          fprintf(stderr, "Invalid security level\n");
+          return EXIT_FAILURE;
+        }
+        break;
+      case 'm': {
+        int arg;
 
-      arg = atoi(optarg);
-      if (arg <= 0) {
-        fprintf(stderr, "Invalid MTU: %d\n", arg);
-        return EXIT_FAILURE;
-      }
+        arg = atoi(optarg);
+        if (arg <= 0) {
+          fprintf(stderr, "Invalid MTU: %d\n", arg);
+          return EXIT_FAILURE;
+        }
 
-      if (arg > UINT16_MAX) {
-        fprintf(stderr, "MTU too large: %d\n", arg);
-        return EXIT_FAILURE;
-      }
+        if (arg > UINT16_MAX) {
+          fprintf(stderr, "MTU too large: %d\n", arg);
+          return EXIT_FAILURE;
+        }
 
-      mtu = (uint16_t)arg;
-      break;
-    }
-    case 't':
-      if (strcmp(optarg, "random") == 0)
-        dst_type = BDADDR_LE_RANDOM;
-      else if (strcmp(optarg, "public") == 0)
-        dst_type = BDADDR_LE_PUBLIC;
-      else {
-        fprintf(stderr,
-          "Allowed types: random, public\n");
-        return EXIT_FAILURE;
+        mtu = (uint16_t)arg;
+        break;
       }
-      break;
-    case 'd':
-      if (str2ba(optarg, &dst_addr) < 0) {
-        fprintf(stderr, "Invalid remote address: %s\n",
+      case 't':
+        if (strcmp(optarg, "random") == 0)
+          dst_type = BDADDR_LE_RANDOM;
+        else if (strcmp(optarg, "public") == 0)
+          dst_type = BDADDR_LE_PUBLIC;
+        else {
+          fprintf(stderr,
+                  "Allowed types: random, public\n");
+          return EXIT_FAILURE;
+        }
+        break;
+      case 'd':
+        if (str2ba(optarg, &dst_addr) < 0) {
+          fprintf(stderr, "Invalid remote address: %s\n",
                   optarg);
+          return EXIT_FAILURE;
+        }
+
+        dst_addr_given = true;
+        break;
+
+      case 'i':
+        dev_id = hci_devid(optarg);
+        if (dev_id < 0) {
+          perror("Invalid adapter");
+          return EXIT_FAILURE;
+        }
+
+        break;
+      default:
+        fprintf(stderr, "Invalid option: %c\n", opt);
         return EXIT_FAILURE;
-      }
-
-      dst_addr_given = true;
-      break;
-
-    case 'i':
-      dev_id = hci_devid(optarg);
-      if (dev_id < 0) {
-        perror("Invalid adapter");
-        return EXIT_FAILURE;
-      }
-
-      break;
-    default:
-      fprintf(stderr, "Invalid option: %c\n", opt);
-      return EXIT_FAILURE;
     }
   }
 
@@ -1820,6 +1829,9 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
+  /// configure the tcpip parameters
+  global_server = setup_tcpip_server(PKserv,&RWcfgTemp);
+
   mainloop_init();
 
   fd = l2cap_le_att_connect(&src_addr, &dst_addr, dst_type, sec);
@@ -1827,11 +1839,16 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
 
   cli = client_create(fd, mtu);
-  if (!cli) {
+  if (!cli)
+  {
     close(fd);
     return EXIT_FAILURE;
   }
 
+  /// copy the read-write-config parameters to CLI instance
+  clone_rwcfg(&RWcfgTemp,&cli->rwcfg);
+
+  /// register callback handler
   if (mainloop_add_fd(fileno(stdin),
         EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR,
         prompt_read_cb /*register our callback*/ , cli, NULL) < 0)
