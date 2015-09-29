@@ -22,9 +22,11 @@ struct tcpip_server
     int       line_len;              /*  # of chars in line, before hitting \n */
 };
 
+struct readwrite_config;
+
 int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1);
 
-struct tcpip_server*   setup_tcpip_server(struct tcpip_server*  serv);
+struct tcpip_server*   setup_tcpip_server(struct tcpip_server*  serv, struct readwrite_config* rwcfg);
 
 struct tcpip_server* tcpip_server_create();
 

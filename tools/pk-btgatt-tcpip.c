@@ -19,13 +19,15 @@ void error(const char *msg);
 
 void error(const char *msg)
 {
+    if(0)
+      usage();
     perror(msg);
     exit(1);
 }
 
-struct tcpip_server*   setup_tcpip_server( struct tcpip_server*  serv)
+struct tcpip_server*   setup_tcpip_server( struct tcpip_server*  serv, struct readwrite_config* rwcfg)
 {
-    serv->port = 1337;
+    serv->port = rwcfg->tcpip_Port;
     fprintf(stdout,"port = %d\n",serv->port);
 
     if ( (serv->list_s = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
@@ -194,3 +196,4 @@ void tcpip_server_destroy(struct tcpip_server* serv)
   close(serv->conn_s);
   free(serv);
 }
+
