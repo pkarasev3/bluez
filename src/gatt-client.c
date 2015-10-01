@@ -520,7 +520,7 @@ static bool desc_write_complete(void *data)
 {
 	struct descriptor *desc = data;
 
-	desc->write_id = false;
+	desc->write_id = 0;
 
 	/*
 	 * The descriptor might have been unregistered during the read. Return
@@ -778,8 +778,10 @@ static void write_characteristic_cb(struct gatt_db_attribute *attr, int err,
 	if (err)
 		return;
 
-	g_dbus_emit_property_changed(btd_get_dbus_connection(), chrc->path,
-					GATT_CHARACTERISTIC_IFACE, "Value");
+	g_dbus_emit_property_changed_full(btd_get_dbus_connection(),
+				chrc->path, GATT_CHARACTERISTIC_IFACE,
+				"Value", G_DBUS_PROPERTY_CHANGED_FLAG_FLUSH);
+
 }
 
 static void chrc_read_cb(bool success, uint8_t att_ecode, const uint8_t *value,
@@ -872,7 +874,7 @@ static bool chrc_write_complete(void *data)
 {
 	struct characteristic *chrc = data;
 
-	chrc->write_id = false;
+	chrc->write_id = 0;
 
 	/*
 	 * The characteristic might have been unregistered during the read.
@@ -946,11 +948,11 @@ static DBusMessage *characteristic_write_value(DBusConnection *conn,
 		goto fail;
 
 	supported = true;
-	chrc->write_id = bt_gatt_client_write_without_response(gatt,
+
+	if (bt_gatt_client_write_without_response(gatt,
 					chrc->value_handle,
 					chrc->props & BT_GATT_CHRC_PROP_AUTH,
-					value, value_len);
-	if (chrc->write_id)
+					value, value_len))
 		return dbus_message_new_method_return(msg);
 
 fail:
@@ -1838,12 +1840,6 @@ void btd_gatt_client_ready(struct btd_gatt_client *client)
 	DBG("GATT client ready");
 
 	create_services(client);
-
-	/*
-	 * Services have already been created before. Re-enable notifications
-	 * for any pre-registered notification sessions.
-	 */
-	queue_foreach(client->all_notify_clients, register_notify, client);
 }
 
 void btd_gatt_client_connected(struct btd_gatt_client *client)
@@ -1860,6 +1856,12 @@ void btd_gatt_client_connected(struct btd_gatt_client *client)
 
 	bt_gatt_client_unref(client->gatt);
 	client->gatt = bt_gatt_client_ref(gatt);
+
+	/*
+	 * Services have already been created before. Re-enable notifications
+	 * for any pre-registered notification sessions.
+	 */
+	queue_foreach(client->all_notify_clients, register_notify, client);
 }
 
 void btd_gatt_client_service_added(struct btd_gatt_client *client,
