@@ -479,14 +479,23 @@ int  write_string_to_handle(
 static void inject_pk_hack(struct client *cli)
 {    
     {
-        uint16_t Xhandle = 0x0015;
-
-        const char cmd1[] = {'i','n','v','c',0x0d,0x0a};
-        const char cmd2[] = {'i','n','v','8',0x0d,0x0a};
+        int cmd0_end       = 0;
+        uint16_t Xhandle   = cli->rwcfg.handle_Write; //0x0015;
+        const char* cmd0   = cli->rwcfg.init_WriteValues;
+        printf("\n cmd0 going to write to: 0x%04x \n", Xhandle);
+        while( cmd0_end >= 0 )
+        {
+          if(cmd0[cmd0_end] == 0)
+            break;
+          printf(COLOR_MAGENTA " %02x " COLOR_OFF,cmd0[cmd0_end] );
+          cmd0_end++;
+        }
+          //const char  cmd1[] = {'i','n','v','c',0x0d,0x0a};
+        //const char  cmd2[] = {'i','n','v','a',0x0d,0x0a};
         //const char cmd3[] = {'i','n','v','d',0x0d,0x0a};
 
-        write_string_to_handle(cli,cmd1,sizeof(cmd1),Xhandle);
-        write_string_to_handle(cli,cmd2,sizeof(cmd2),Xhandle);
+        write_string_to_handle(cli,cmd0,strlen(cmd0),Xhandle);
+        //write_string_to_handle(cli,cmd2,sizeof(cmd2),Xhandle);
 
         {
             int s;
@@ -1701,6 +1710,7 @@ int main(int argc, char *argv[])
   int dev_id = -1;
   int fd;
   sigset_t mask;
+  unsigned int temp_ui;
 
   /////////////////////////////////////
   struct client *cli;
@@ -1727,11 +1737,15 @@ int main(int argc, char *argv[])
         if(RWcfgTemp.tcpip_Port<=0)
           RWcfgTemp.tcpip_Enabled = 0;
         break;
-      case 'W':
-        RWcfgTemp.handle_Write = atoi(optarg);
+      case 'W':        
+        sscanf(optarg,"0x%04x",&temp_ui);
+        RWcfgTemp.handle_Write = temp_ui;
+        printf("got value: %d for write handle\n",RWcfgTemp.handle_Write);
         break;
       case 'N':
-        RWcfgTemp.handle_Read = atoi(optarg);
+        sscanf(optarg,"0x%04x",&temp_ui);
+        RWcfgTemp.handle_Read = temp_ui;
+        printf("got value: %d for notify/read handle\n",RWcfgTemp.handle_Read);
         break;
       case 'C':
         cmd_from_arg(&RWcfgTemp,optarg);
