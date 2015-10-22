@@ -1295,11 +1295,13 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
     printf("%02x ", value[i]);
     if( (i>0) && (value[i-1]==0x0d) && (value[i]==0x0a) )
     {
+        int iWrote;
         if(0)
             printf("got new line of length %03d\n",global_server->line_len);
-        tcpip_server_write_line( global_server );
+        iWrote = tcpip_server_write_line( global_server );
 
-        global_server->line_len = 0;
+        if(iWrote == global_server->line_len)
+          global_server->line_len = 0;
     }
   }  
   PRLOG("\n");

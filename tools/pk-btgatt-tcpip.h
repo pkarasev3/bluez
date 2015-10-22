@@ -30,7 +30,7 @@ struct tcpip_server*   setup_tcpip_server(struct tcpip_server*  serv, struct rea
 
 struct tcpip_server* tcpip_server_create();
 
-void tcpip_server_write_line(struct tcpip_server* serv);
+int tcpip_server_write_line(struct tcpip_server* serv);
 
 void tcpip_server_destroy(struct tcpip_server* serv);
 

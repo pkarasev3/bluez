@@ -165,7 +165,7 @@ struct tcpip_server* tcpip_server_create()
   return serv;
 }
 
-void tcpip_server_write_line(struct tcpip_server* serv)
+int tcpip_server_write_line(struct tcpip_server* serv)
 {
   int wroteCount;
 
@@ -176,11 +176,11 @@ void tcpip_server_write_line(struct tcpip_server* serv)
   {
     printf(" failed to accept() connection! \n ");
     serv->line_len = 0;
-    return;
+    return -1;
   }
 
   if( serv->line_len <= 0 )
-    return;
+    return -2;
 
   wroteCount = Writeline(serv->conn_s,serv->buffer,serv->line_len);
   if( wroteCount != serv->line_len )
@@ -189,6 +189,7 @@ void tcpip_server_write_line(struct tcpip_server* serv)
   {/*usleep(500);*/}          /*printf(" success!\n ") ;*/
 
   serv->line_len = 0;
+  return wroteCount;
 }
 
 void tcpip_server_destroy(struct tcpip_server* serv)
