@@ -56,13 +56,18 @@ size_t  cmd_from_arg(struct readwrite_config*  arg, const char* cmd);
 static void usage(void)
 {
   printf("btgatt-client\n");
-  printf("Usage:\n\tbtgatt-client [options]\n");
+
+  /// Start off without printing anything
+  printf("\nMODIFIED to start with printing state off.\n");
+
+  printf("\nUsage:\n\tbtgatt-client [options]\n");
 
   printf("Options:\n"
     "\t-i, --index <id>\t\tSpecify adapter index, e.g. hci0\n"
     "\t-d, --dest <addr>\t\tSpecify the destination address\n"
     "\t-t, --type [random|public] \tSpecify the LE address type\n"
     "\t-m, --mtu <mtu> \t\tThe ATT MTU to use\n"
+    "\t-n, --n         \t\tUse to notify CB\n"
     "\t-s, --security-level <sec> \tSet security level (low|"
                 "medium|high)\n"
     "\t-v, --verbose\t\t\tEnable extra logging\n"

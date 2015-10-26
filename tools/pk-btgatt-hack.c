@@ -61,6 +61,9 @@
 
 static bool verbose = false;
 
+static bool PRINT_NOTIFY_CB = false; // whether we should start off printing handle values
+
+
 
 
 struct client {
@@ -92,6 +95,7 @@ static struct option main_options[] =
   { "dest",             1, 0, 'd' },
   { "type",             1, 0, 't' },
   { "mtu",   		    1, 0, 'm' },
+  { "n",   		        1, 0, 'n' },
   { "security-level",	1, 0, 's' },
   { "verbose",          0, 0, 'v' },
   { "help",             0, 0, 'h' },
@@ -1276,22 +1280,27 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
       write_string_to_handle(global_client,cmd3,sizeof(cmd3),Xhandle);
   }
 
+  if(PRINT_NOTIFY_CB == true)
   printf(" global_serv->port=%d ... ",global_server->port);
-  printf("NOTIFY_CB: ");
 
-  printf("\n HandleValue Not/Ind: 0x%04x - ", value_handle);
+  if(PRINT_NOTIFY_CB == true){
+      printf("NOTIFY_CB: ");
+      printf("\n HandleValue Not/Ind: 0x%04x - ", value_handle);
+  }
 
   if (length == 0) {
     PRLOG("(0 bytes)\n");
     return;
   }
-
+  if(PRINT_NOTIFY_CB == true)
   printf("(%u bytes): ", length);
 
   for (i = 0; i < length; i++)
   {
     global_server->buffer[ global_server->line_len ] = value[i];
     global_server->line_len += 1;
+
+    if(PRINT_NOTIFY_CB == true)
     printf("%02x ", value[i]);
     if( (i>0) && (value[i-1]==0x0d) && (value[i]==0x0a) )
     {
@@ -1301,7 +1310,7 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
 
         global_server->line_len = 0;
     }
-  }  
+  }
   PRLOG("\n");
 
 }
@@ -1723,7 +1732,7 @@ int main(int argc, char *argv[])
 
   initialize_rwcfg(&RWcfgTemp);
 
-  while ((opt = getopt_long(argc, argv, "+hvs:m:t:d:i:P:W:N:C:Z:",
+  while ((opt = getopt_long(argc, argv, "+hvs:m:nt:d:i:P:W:N:C:Z:",
             main_options, NULL)) != -1) {
     switch (opt) {
       case 'h':
@@ -1731,6 +1740,9 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
       case 'v':
         verbose = true;
+        break;
+      case 'n':
+        PRINT_NOTIFY_CB = true;
         break;
       case 'P':
         RWcfgTemp.tcpip_Port = atoi(optarg);
