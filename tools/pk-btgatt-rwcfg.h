@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 struct readwrite_config
 {
@@ -34,7 +35,7 @@ struct readwrite_config
   int       tcpip_Port;             // port where data is published
   int       tcpip_PacketSize;       // (expected) size of packets to send
   int       tcpip_Enabled;          // is sending on tcpip enabled
-
+  bool      PRINT_NOTIFY_CB;        // should we printf bunch of times during notify callback
   char      init_WriteValues [16];  // initial commands to send after connected
 };
 
@@ -57,9 +58,6 @@ static void usage(void)
 {
   printf("btgatt-client\n");
 
-  /// Start off without printing anything
-  printf("\nMODIFIED to start with printing state off.\n");
-
   printf("\nUsage:\n\tbtgatt-client [options]\n");
 
   printf("Options:\n"
@@ -67,20 +65,20 @@ static void usage(void)
     "\t-d, --dest <addr>\t\tSpecify the destination address\n"
     "\t-t, --type [random|public] \tSpecify the LE address type\n"
     "\t-m, --mtu <mtu> \t\tThe ATT MTU to use\n"
-    "\t-n, --n         \t\tUse to notify CB\n"
+    "\t-n, --notify-via-printf \tEnable printf during notify callback\n"
     "\t-s, --security-level <sec> \tSet security level (low|"
                 "medium|high)\n"
     "\t-v, --verbose\t\t\tEnable extra logging\n"
     "\t-h, --help\t\t\tDisplay help\n"
     "\t-P  --tcpip-port <N> \t\tSet tcpip port to send packets on (N<1 to disable)\n"
-    "\t-Z  --tcpip-packet-sz <N> \t\tSet tcpip packet size to N bytes \n"
-    "\t-W  --handle-write <hex>  \t Define handle to write values to after"
+    "\t-Z  --tcpip-packet-sz <N> \tSet tcpip packet size to N bytes \n"
+    "\t-W  --handle-write <hex>  \tDefine handle to write values to after"
                                   " device is ready. Example: -W 0x002A  \n"
-    "\t-N  --handle-notify <hex> \t Define handle for registering notifications "
+    "\t-N  --handle-notify <hex> \tDefine handle for registering notifications "
                                   "during startup. Example: -N 0x002A  \n"
-    "\t-C  --command-init <cmd1> <cmd2> ... <cmd5> "
-                                "\t Define commands to write as values to "
-                                " the write handle. Note: -W must also be used.\n"
+    "\t-C  --command-init <cmd1> <cmd2> ... <cmd5>\n"
+                                "\t\t\t\t\tDefine commands to write as values to "
+                                "write handle.\n"
          );
 }
 
