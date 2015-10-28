@@ -61,9 +61,7 @@
 
 static bool verbose = false;
 
-static bool PRINT_NOTIFY_CB = false; // whether we should start off printing handle values
-
-
+//static bool PRINT_NOTIFY_CB = false; // whether we should start off printing handle values
 
 
 struct client {
@@ -94,9 +92,9 @@ static struct option main_options[] =
   { "index",            1, 0, 'i' },
   { "dest",             1, 0, 'd' },
   { "type",             1, 0, 't' },
-  { "mtu",   		    1, 0, 'm' },
-  { "n",   		        1, 0, 'n' },
-  { "security-level",	1, 0, 's' },
+  { "mtu",   	          1, 0, 'm' },
+  { "notify-via-printf",0, 0, 'n' },
+  { "security-level",	  1, 0, 's' },
   { "verbose",          0, 0, 'v' },
   { "help",             0, 0, 'h' },
   { }
@@ -436,7 +434,7 @@ static void* loop_register_later( void* arg )
     fflush(stdin);
 
     {
-        cmd_register_notify(tinfo->cli,"0x0018");
+        cmd_register_notify(tinfo->cli,"0x0018"/*TODO: use the one in cli->rwcfg*/);
 
         fflush(stdin);
         fflush(stdout);
@@ -494,12 +492,8 @@ static void inject_pk_hack(struct client *cli)
           printf(COLOR_MAGENTA " %02x " COLOR_OFF,cmd0[cmd0_end] );
           cmd0_end++;
         }
-          //const char  cmd1[] = {'i','n','v','c',0x0d,0x0a};
-        //const char  cmd2[] = {'i','n','v','a',0x0d,0x0a};
-        //const char cmd3[] = {'i','n','v','d',0x0d,0x0a};
 
         write_string_to_handle(cli,cmd0,strlen(cmd0),Xhandle);
-        //write_string_to_handle(cli,cmd2,sizeof(cmd2),Xhandle);
 
         {
             int s;
@@ -1261,8 +1255,9 @@ static void register_notify_usage(void)
 static void notify_cb(uint16_t value_handle, const uint8_t *value,
           uint16_t length, void *user_data)
 {
-  int i;
-  int state;
+  int  i;
+  int  state;
+  bool printf_enabled;
 
   state = atomic_load( &RegistrationState );
   while( 0 != state )
@@ -1273,36 +1268,32 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
       fflush(stderr);
   }
 
-  if(0)
+  printf_enabled = global_client->rwcfg.PRINT_NOTIFY_CB;
+  if(printf_enabled)
   {
-      unsigned int Xhandle = 0x0015;
-      const char cmd3[] = {'i','n','v','d',0x0d,0x0a};
-      write_string_to_handle(global_client,cmd3,sizeof(cmd3),Xhandle);
-  }
-
-  if(PRINT_NOTIFY_CB == true)
-  printf(" global_serv->port=%d ... ",global_server->port);
-
-  if(PRINT_NOTIFY_CB == true){
+      printf(" global_serv->port=%d ... ",global_server->port);
       printf("NOTIFY_CB: ");
       printf("\n HandleValue Not/Ind: 0x%04x - ", value_handle);
   }
 
-  if (length == 0) {
+  if (length == 0)
+  {
     PRLOG("(0 bytes)\n");
     return;
   }
-  if(PRINT_NOTIFY_CB == true)
-  printf("(%u bytes): ", length);
+
+  if(printf_enabled)
+    printf("(%u bytes): ", length);
 
   for (i = 0; i < length; i++)
   {
     global_server->buffer[ global_server->line_len ] = value[i];
     global_server->line_len += 1;
 
-    if(PRINT_NOTIFY_CB == true)
-    printf("%02x ", value[i]);
-    if( (i>0) && (value[i-1]==0x0d) && (value[i]==0x0a) )
+    if(printf_enabled)
+      printf("%02x ", value[i]);
+
+    if( (i>0) && (value[i-1]==0x0d) && (value[i]==0x0a) ) // if line ends with CR LF
     {
         int iWrote;
         if(0)
@@ -1313,7 +1304,8 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
           global_server->line_len = 0;
     }
   }
-  PRLOG("\n");
+  if(printf_enabled)
+    PRLOG("\n");
 
 }
 
@@ -1730,7 +1722,7 @@ int main(int argc, char *argv[])
 
   PKserv        = tcpip_server_create();
 
-  fprintf(stdout, "%s %d\n",__FILE__,__LINE__);
+  fprintf(stdout, "%s  %s @ %d\n",__DATE__,__FILE__,__LINE__);
 
   initialize_rwcfg(&RWcfgTemp);
 
@@ -1744,7 +1736,7 @@ int main(int argc, char *argv[])
         verbose = true;
         break;
       case 'n':
-        PRINT_NOTIFY_CB = true;
+        RWcfgTemp.PRINT_NOTIFY_CB = true;
         break;
       case 'P':
         RWcfgTemp.tcpip_Port = atoi(optarg);

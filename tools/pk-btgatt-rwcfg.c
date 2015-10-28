@@ -10,6 +10,7 @@ void initialize_rwcfg(struct readwrite_config* arg)
   arg->tcpip_Port       = 1337;
   arg->tcpip_PacketSize = 23;
   arg->tcpip_Enabled    = 1;
+  arg->PRINT_NOTIFY_CB  = false;
 
   memset(&arg->init_WriteValues[0],0,sizeof(arg->init_WriteValues));
 }
@@ -18,8 +19,10 @@ void initialize_rwcfg(struct readwrite_config* arg)
 size_t cmd_from_arg(struct readwrite_config* arg, const char* cmd)
 {
   size_t i;
-  if(!cmd)
+  if(!cmd) {
+    usage();
     return 0;
+  }
 
   for(i=0;i<(sizeof(arg->init_WriteValues)-2);i++)
   {
@@ -40,6 +43,7 @@ void clone_rwcfg(const struct readwrite_config* src,struct readwrite_config* dst
   dst->tcpip_Enabled=src->tcpip_Enabled;
   dst->tcpip_PacketSize=src->tcpip_PacketSize;
   dst->tcpip_Port=src->tcpip_Port;
+  dst->PRINT_NOTIFY_CB=src->PRINT_NOTIFY_CB;
 
   memcpy(&dst->init_WriteValues[0],&src->init_WriteValues[0],sizeof(src->init_WriteValues));
 }
