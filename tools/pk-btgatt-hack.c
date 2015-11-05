@@ -61,10 +61,8 @@
 
 static bool verbose = false;
 
-//static bool PRINT_NOTIFY_CB = false; // whether we should start off printing handle values
-
-
-struct client {
+struct client
+{
   int fd;
   struct bt_att *att;
   struct gatt_db *db;
@@ -81,6 +79,14 @@ struct tcpip_server*  global_server;
 /////////////////////////////////////////////////////////
 struct client*        global_client;
 /////////////////////////////////////////////////////////
+
+////////////////////////////////////////
+atomic_int   RegistrationState  = ATOMIC_VAR_INIT(0);
+
+////////////////////////////////////////
+atomic_int   PromptPrintState   = ATOMIC_VAR_INIT(0);
+static int   PromptPrint_OFF_   = 2;
+
 
 static struct option main_options[] =
 {
@@ -103,6 +109,9 @@ static struct option main_options[] =
 
 static void print_prompt(void)
 {
+  int prompt_print_state = atomic_load(&PromptPrintState);
+  if( prompt_print_state == PromptPrint_OFF_ )
+    return;
   printf(COLOR_BLUE "[GATT client]" COLOR_OFF "# ");
   fflush(stdout);
 }
@@ -402,8 +411,6 @@ struct thread_info
     struct client* cli;
 };
 
-////////////////////////////////////////
-atomic_int   RegistrationState  = ATOMIC_VAR_INIT(0);
 
 ////////////////////////////////////////
 static void* loop_register_later( void* arg )
@@ -442,6 +449,8 @@ static void* loop_register_later( void* arg )
 
         state = 0;        
         atomic_store(&RegistrationState,state);
+
+        atomic_store(&PromptPrintState,PromptPrint_OFF_);
     }
 
     return tinfo;
@@ -1259,6 +1268,9 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
   int  state;
   bool printf_enabled;
 
+  fflush(stderr);
+  fflush(stdout);
+
   state = atomic_load( &RegistrationState );
   while( 0 != state )
   {
@@ -1737,6 +1749,7 @@ int main(int argc, char *argv[])
         break;
       case 'n':
         RWcfgTemp.PRINT_NOTIFY_CB = true;
+        atomic_store(&PromptPrintState,1);
         break;
       case 'P':
         RWcfgTemp.tcpip_Port = atoi(optarg);
