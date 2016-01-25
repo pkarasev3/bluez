@@ -20,6 +20,10 @@ fi
     --prefix=/usr          \
     --enable-library       \
     --enable-test          \
+    --enable-manpages \
+    --with-dbus \
+    --with-pic \
+    --with-dbusconfdir=/etc/dbus-1/ \
     --disable-systemd      \
 		--sysconfdir=/etc \
 		--localstatedir=/var \
@@ -27,4 +31,4 @@ fi
 		--enable-experimental \
 		--enable-android \
 		--enable-sixaxis \
-		--disable-datafiles $*
+	             $*
