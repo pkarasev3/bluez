@@ -1205,9 +1205,6 @@ static DBusMessage *characteristic_stop_notify(DBusConnection *conn,
 	const char *sender = dbus_message_get_sender(msg);
 	struct notify_client *client;
 
-	if (!chrc->notifying)
-		return btd_error_failed(msg, "Not notifying");
-
 	client = queue_remove_if(chrc->notify_clients, match_notify_sender,
 							(void *) sender);
 	if (!client)
@@ -1691,6 +1688,12 @@ static void export_service(struct gatt_db_attribute *attr, void *user_data)
 
 static void create_services(struct btd_gatt_client *client)
 {
+	/* Don't attempt to create any objects if experimental is disabled */
+	if (!(g_dbus_get_flags() & G_DBUS_FLAG_ENABLE_EXPERIMENTAL)) {
+		info("GATT service objects disabled");
+		return;
+	}
+
 	DBG("Exporting objects for GATT services: %s", client->devaddr);
 
 	gatt_db_foreach_service(client->db, NULL, export_service, client);

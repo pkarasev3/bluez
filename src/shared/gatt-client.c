@@ -357,11 +357,12 @@ struct discovery_op {
 	struct bt_gatt_client *client;
 	struct queue *pending_svcs;
 	struct queue *pending_chrcs;
-	struct queue *tmp_queue;
+	struct queue *svcs;
 	struct gatt_db_attribute *cur_svc;
 	bool success;
 	uint16_t start;
 	uint16_t end;
+	uint16_t last;
 	int ref_count;
 	discovery_op_complete_func_t complete_func;
 	discovery_op_fail_func_t failure_func;
@@ -371,8 +372,23 @@ static void discovery_op_free(struct discovery_op *op)
 {
 	queue_destroy(op->pending_svcs, NULL);
 	queue_destroy(op->pending_chrcs, free);
-	queue_destroy(op->tmp_queue, NULL);
+	queue_destroy(op->svcs, NULL);
 	free(op);
+}
+
+static void discovery_op_complete(struct discovery_op *op, bool success,
+								uint8_t err)
+{
+	/* Reset remaining range */
+	if (success) {
+		if (op->last != UINT16_MAX)
+			gatt_db_clear_range(op->client->db, op->last + 1,
+								UINT16_MAX);
+	} else
+		gatt_db_clear(op->client->db);
+
+	op->success = success;
+	op->complete_func(op, success, err);
 }
 
 static struct discovery_op *discovery_op_create(struct bt_gatt_client *client,
@@ -385,7 +401,7 @@ static struct discovery_op *discovery_op_create(struct bt_gatt_client *client,
 	op = new0(struct discovery_op, 1);
 	op->pending_svcs = queue_new();
 	op->pending_chrcs = queue_new();
-	op->tmp_queue = queue_new();
+	op->svcs = queue_new();
 	op->client = client;
 	op->complete_func = complete_func;
 	op->failure_func = failure_func;
@@ -501,17 +517,11 @@ next:
 	/* Move on to the next service */
 	attr = queue_pop_head(op->pending_svcs);
 	if (!attr) {
-		struct queue *tmp_queue;
-
-		tmp_queue = op->pending_svcs;
-		op->pending_svcs = op->tmp_queue;
-		op->tmp_queue = tmp_queue;
-
 		/*
 		 * We have processed all include definitions. Move on to
 		 * characteristics.
 		 */
-		attr = queue_pop_head(op->pending_svcs);
+		attr = queue_pop_head(op->svcs);
 		if (!attr)
 			goto failed;
 
@@ -535,7 +545,7 @@ next:
 		goto failed;
 	}
 
-	queue_push_tail(op->tmp_queue, attr);
+	queue_push_tail(op->svcs, attr);
 	op->cur_svc = attr;
 	if (!gatt_db_attribute_get_service_handles(attr, &start, &end))
 		goto failed;
@@ -556,8 +566,7 @@ next:
 	discovery_op_unref(op);
 
 failed:
-	op->success = false;
-	op->complete_func(op, false, att_ecode);
+	discovery_op_complete(op, false, att_ecode);
 }
 
 struct chrc {
@@ -588,8 +597,12 @@ static bool discover_descs(struct discovery_op *op, bool *discovering)
 							chrc_data->properties,
 							NULL, NULL, NULL);
 
-		if (!attr)
+		if (!attr) {
+			util_debug(client->debug_callback, client->debug_data,
+				"Failed to insert characteristic at 0x%04x",
+				chrc_data->value_handle);
 			goto failed;
+		}
 
 		if (gatt_db_attribute_get_handle(attr) !=
 							chrc_data->value_handle)
@@ -698,7 +711,7 @@ next:
 	/* Done with the current service */
 	gatt_db_service_set_active(op->cur_svc, true);
 
-	attr = queue_pop_head(op->pending_svcs);
+	attr = queue_pop_head(op->svcs);
 	if (!attr)
 		goto done;
 
@@ -727,8 +740,7 @@ failed:
 	success = false;
 
 done:
-	op->success = success;
-	op->complete_func(op, success, att_ecode);
+	discovery_op_complete(op, success, att_ecode);
 }
 
 static void discover_chrcs_cb(bool success, uint8_t att_ecode,
@@ -805,7 +817,7 @@ next:
 	/* Done with the current service */
 	gatt_db_service_set_active(op->cur_svc, true);
 
-	attr = queue_pop_head(op->pending_svcs);
+	attr = queue_pop_head(op->svcs);
 	if (!attr)
 		goto done;
 
@@ -834,8 +846,7 @@ failed:
 	success = false;
 
 done:
-	op->success = success;
-	op->complete_func(op, success, att_ecode);
+	discovery_op_complete(op, success, att_ecode);
 }
 
 static void discover_secondary_cb(bool success, uint8_t att_ecode,
@@ -903,6 +914,10 @@ static void discover_secondary_cb(bool success, uint8_t att_ecode,
 		/* Skip if service already active */
 		if (!gatt_db_service_get_active(attr))
 			queue_push_tail(op->pending_svcs, attr);
+
+		/* Update last handle */
+		if (end > op->last)
+			op->last = end;
 	}
 
 next:
@@ -916,10 +931,10 @@ next:
 	}
 
 	/*
-	 * Store the service in the tmp queue to be reused during
+	 * Store the service in the svcs queue to be reused during
 	 * characteristics discovery later.
 	 */
-	queue_push_tail(op->tmp_queue, attr);
+	queue_push_tail(op->svcs, attr);
 	op->cur_svc = attr;
 
 	if (!gatt_db_attribute_get_service_handles(attr, &start, &end)) {
@@ -940,8 +955,7 @@ next:
 	discovery_op_unref(op);
 
 done:
-	op->success = success;
-	op->complete_func(op, success, att_ecode);
+	discovery_op_complete(op, success, att_ecode);
 }
 
 static void discover_primary_cb(bool success, uint8_t att_ecode,
@@ -1007,6 +1021,10 @@ static void discover_primary_cb(bool success, uint8_t att_ecode,
 		/* Skip if service already active */
 		if (!gatt_db_service_get_active(attr))
 			queue_push_tail(op->pending_svcs, attr);
+
+		/* Update last handle */
+		if (end > op->last)
+			op->last = end;
 	}
 
 secondary:
@@ -1034,8 +1052,7 @@ secondary:
 	success = false;
 
 done:
-	op->success = success;
-	op->complete_func(op, success, att_ecode);
+	discovery_op_complete(op, success, att_ecode);
 }
 
 static void notify_client_ready(struct bt_gatt_client *client, bool success,
@@ -1116,9 +1133,6 @@ static void complete_notify_request(void *data)
 {
 	struct notify_data *notify_data = data;
 
-	/* Increment the per-characteristic ref count of notify handlers */
-	__sync_fetch_and_add(&notify_data->chrc->notify_count, 1);
-
 	notify_data->att_id = 0;
 	notify_data->callback(0, notify_data->user_data);
 }
@@ -1174,7 +1188,6 @@ static void enable_ccc_callback(uint8_t opcode, const void *pdu,
 	struct notify_data *notify_data = user_data;
 	uint16_t att_ecode;
 
-	assert(!notify_data->chrc->notify_count);
 	assert(notify_data->chrc->ccc_write_id);
 
 	notify_data->chrc->ccc_write_id = 0;
@@ -1264,6 +1277,9 @@ static unsigned int register_notify(struct bt_gatt_client *client,
 
 	notify_data->id = client->next_reg_id++;
 
+	/* Increment the per-characteristic ref count of notify handlers */
+	__sync_fetch_and_add(&notify_data->chrc->notify_count, 1);
+
 	/*
 	 * If a write to the CCC descriptor is in progress, then queue this
 	 * request.
@@ -1274,9 +1290,9 @@ static unsigned int register_notify(struct bt_gatt_client *client,
 	}
 
 	/*
-	 * If the ref count is not zero, then notifications are already enabled.
+	 * If the ref count > 1, then notifications are already enabled.
 	 */
-	if (chrc->notify_count > 0 || !chrc->ccc_handle) {
+	if (chrc->notify_count > 1 || !chrc->ccc_handle) {
 		complete_notify_request(notify_data);
 		return notify_data->id;
 	}
@@ -1555,7 +1571,6 @@ static void disable_ccc_callback(uint8_t opcode, const void *pdu,
 	struct notify_data *notify_data = user_data;
 	struct notify_data *next_data;
 
-	assert(!notify_data->chrc->notify_count);
 	assert(notify_data->chrc->ccc_write_id);
 
 	notify_data->chrc->ccc_write_id = 0;
@@ -1581,6 +1596,7 @@ static void complete_unregister_notify(void *data)
 	 */
 	if (notify_data->att_id) {
 		bt_att_cancel(notify_data->client->att, notify_data->att_id);
+		notify_data->att_id = 0;
 		goto done;
 	}
 
@@ -2156,7 +2172,9 @@ static void read_long_cb(uint8_t opcode, const void *pdu,
 		goto done;
 	}
 
-	if (opcode != BT_ATT_OP_READ_BLOB_RSP || (!pdu && length)) {
+	if ((!op->offset && opcode != BT_ATT_OP_READ_RSP)
+			|| (op->offset && opcode != BT_ATT_OP_READ_BLOB_RSP)
+			|| (!pdu && length)) {
 		success = false;
 		goto done;
 	}
@@ -2209,7 +2227,9 @@ unsigned int bt_gatt_client_read_long_value(struct bt_gatt_client *client,
 {
 	struct request *req;
 	struct read_long_op *op;
+	uint8_t att_op;
 	uint8_t pdu[4];
+	uint16_t pdu_len;
 
 	if (!client)
 		return 0;
@@ -2233,12 +2253,32 @@ unsigned int bt_gatt_client_read_long_value(struct bt_gatt_client *client,
 	req->destroy = destroy_read_long_op;
 
 	put_le16(value_handle, pdu);
-	put_le16(offset, pdu + 2);
+	pdu_len = sizeof(value_handle);
 
-	req->att_id = bt_att_send(client->att, BT_ATT_OP_READ_BLOB_REQ,
-							pdu, sizeof(pdu),
-							read_long_cb, req,
-							request_unref);
+	/*
+	 * Core v4.2, part F, section 1.3.4.4.5:
+	 * If the attribute value has a fixed length that is less than or equal
+	 * to (ATT_MTU - 3) octets in length, then an Error Response can be sent
+	 * with the error code «Attribute Not Long».
+	 *
+	 * To remove need for caller to handle "Attribute Not Long" error when
+	 * reading characteristics with short values, use Read Request for
+	 * reading first part of characteristics value instead of Read Blob
+	 * Request. Both are allowed in this case.
+	 */
+
+	if (op->offset) {
+		att_op = BT_ATT_OP_READ_BLOB_REQ;
+		pdu_len += sizeof(op->offset);
+
+		put_le16(op->offset, pdu + 2);
+	} else {
+		att_op = BT_ATT_OP_READ_REQ;
+	}
+
+	req->att_id = bt_att_send(client->att, att_op, pdu, pdu_len,
+					read_long_cb, req, request_unref);
+
 	if (!req->att_id) {
 		op->destroy = NULL;
 		request_unref(req);
@@ -2959,8 +2999,8 @@ bool bt_gatt_client_unregister_notify(struct bt_gatt_client *client,
 	if (!notify_data)
 		return false;
 
-	assert(notify_data->chrc->notify_count > 0);
-	assert(!notify_data->chrc->ccc_write_id);
+	/* Remove data if it has been queued */
+	queue_remove(notify_data->chrc->reg_notify_queue, notify_data);
 
 	complete_unregister_notify(notify_data);
 	return true;

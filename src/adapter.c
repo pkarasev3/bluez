@@ -2304,6 +2304,9 @@ static DBusMessage *set_discovery_filter(DBusConnection *conn,
 	if (!(adapter->current_settings & MGMT_SETTING_POWERED))
 		return btd_error_not_ready(msg);
 
+	if (MGMT_VERSION(mgmt_version, mgmt_revision) < MGMT_VERSION(1, 8))
+		return btd_error_not_supported(msg);
+
 	/* parse parameters */
 	if (!parse_discovery_filter_dict(&discovery_filter, msg))
 		return btd_error_invalid_args(msg);
@@ -3088,12 +3091,12 @@ static GSList *get_ltk_info(GKeyFile *key_file, const char *peer,
 static struct irk_info *get_irk_info(GKeyFile *key_file, const char *peer,
 							uint8_t bdaddr_type)
 {
-	struct irk_info *irk;
+	struct irk_info *irk = NULL;
 	char *str;
 
 	str = g_key_file_get_string(key_file, "IdentityResolvingKey", "Key", NULL);
 	if (!str || strlen(str) < 32)
-		return NULL;
+		goto failed;
 
 	irk = g_new0(struct irk_info, 1);
 
@@ -3105,6 +3108,7 @@ static struct irk_info *get_irk_info(GKeyFile *key_file, const char *peer,
 	else
 		str2buf(&str[0], irk->val, sizeof(irk->val));
 
+failed:
 	g_free(str);
 
 	return irk;
