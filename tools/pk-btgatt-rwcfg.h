@@ -29,6 +29,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+#define  MaxCommandPacketSize  512
 struct readwrite_config
 {
   uint16_t  handle_Read;            // what index we listen to notifications on
@@ -36,8 +37,10 @@ struct readwrite_config
   int       tcpip_Port;             // port where data is published
   int       tcpip_PacketSize;       // (expected) size of packets to send
   int       tcpip_Enabled;          // is sending on tcpip enabled
-  bool      PRINT_NOTIFY_CB;        // should we printf bunch of times during notify callback
-  char      next_WriteValues[32];   // next commands to send (e.g. after connected or from later command being invoked)
+  int       print_notify_verbosity; // should we printf bunch of times during notify callback
+
+  //! next commands to send (e.g. after connected or from later command being invoked)
+  char      next_WriteValues[MaxCommandPacketSize];
 };
 
 void  initialize_rwcfg(struct readwrite_config*  arg);
@@ -57,8 +60,9 @@ size_t  cmd_from_arg(struct readwrite_config*  arg, const uint8_t* cmd);
 size_t  put_string_as_hex_values_command(struct readwrite_config* arg, const uint8_t* cmd);
 
 
-#define COLOR_OFF	"\x1B[0m"
-#define COLOR_RED	"\x1B[0;91m"
+#define COLOR_OFF	    "\x1B[0m"
+#define COLOR_RED	    "\x1B[0;91m"
+#define COLOR_BOLDRED	"\x1B[1;5;91m"
 #define COLOR_GREEN	"\x1B[0;92m"
 #define COLOR_YELLOW	"\x1B[0;93m"
 #define COLOR_BLUE	"\x1B[0;94m"
@@ -82,9 +86,18 @@ void usage(void);
 
 //! @return{false if too many args, true if correct.}
 //! @note{unkown behavior if not enough args versus expected count}
-bool parse_args(char *str, int expected_argc,  char **argv, int *argc)
-;
+bool parse_args(char *str, int expected_argc,  char **argv, int *argc);
 
+//! @return{string description of error code from BT backend}
 const char *ecode_to_string(uint8_t ecode);
+
+//! @brief{printf only if object's verbosity is at least N}
+#define printf_VN(arg,n,...) \
+     {if(arg->print_notify_verbosity >= n){\
+         printf(__VA_ARGS__); printf(COLOR_BLUE "#" COLOR_OFF);}\
+     };
+#define printf_V1(arg,...) printf_VN(arg,1,__VA_ARGS__)
+
+#define printf_V2(arg,...) printf_VN(arg,2,__VA_ARGS__)
 
 #endif

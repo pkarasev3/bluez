@@ -87,7 +87,7 @@ static struct option main_options[] =
   { "dest",             1, 0, 'd' },
   { "type",             1, 0, 't' },
   { "mtu",   	          1, 0, 'm' },
-  { "notify-via-printf",0, 0, 'n' },
+  { "notify-via-printf",1, 0, 'n' },
   { "security-level",	  1, 0, 's' },
   { "verbose",          0, 0, 'v' },
   { "help",             0, 0, 'h' },
@@ -1150,7 +1150,7 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
       fflush(stderr);
   }
 
-  printf_enabled = global_client->rwcfg.PRINT_NOTIFY_CB;
+  printf_enabled = (0 < global_client->rwcfg.print_notify_verbosity);
   if(printf_enabled)
   {
       printf(" global_serv->port=%d ... ",global_server->port);
@@ -1508,12 +1508,13 @@ static void segfault_loop(int sn)
 {
   int ncntMax = 100;
   int ncnt    = 0;
-  printf( COLOR_BOLDGRAY  " [%d] : Segfault! "  COLOR_RED   TVOYU_M   COLOR_OFF, sn);
+  printf( COLOR_BOLDGRAY  " [%d] : Segfault! "  COLOR_BOLDRED   TVOYU_M   COLOR_OFF, sn);
   while(++ncnt < ncntMax) {
-    fprintf( stderr, " time left to attach debugger: %03d/%03d ...\r" COLOR_RED  TVOYU_M  COLOR_OFF, ncnt, ncntMax);
+    fprintf( stderr, "  time left to attach debugger: %03d/%03d ...\r" COLOR_BOLDRED  TVOYU_M  COLOR_OFF, ncnt, ncntMax);
     fflush(stderr);
-    usleep(10 * 1000 * 1000 / ncntMax);
+    usleep(60 * 1000 * 1000 / ncntMax);
   }
+  exit(-2);
 }
 
 static void signal_cb(int signum, void *user_data)
@@ -1627,7 +1628,7 @@ int main(int argc, char *argv[])
 
   initialize_rwcfg(&RWcfgTemp);
 
-  while ((opt = getopt_long(argc, argv, "+hvs:m:nt:d:i:P:W:N:C:Z:",
+  while ((opt = getopt_long(argc, argv, "+hvs:m:n:t:d:i:P:W:N:C:Z:",
             main_options, NULL)) != -1) {
     switch (opt) {
       case 'h':
@@ -1637,7 +1638,10 @@ int main(int argc, char *argv[])
         verbose = true;
         break;
       case 'n':
-        RWcfgTemp.PRINT_NOTIFY_CB = true;
+        RWcfgTemp.print_notify_verbosity = true;
+        if(opt>=0)
+          RWcfgTemp.print_notify_verbosity = opt;
+        printf("arg %s found; setting verbosity = %d\n",optarg,RWcfgTemp.print_notify_verbosity);
         atomic_store(&PromptPrintState,1);
         break;
       case 'P':

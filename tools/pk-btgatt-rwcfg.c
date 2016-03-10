@@ -11,7 +11,7 @@ void initialize_rwcfg(struct readwrite_config* arg)
   arg->tcpip_Port       = 1337;
   arg->tcpip_PacketSize = 23;
   arg->tcpip_Enabled    = 1;
-  arg->PRINT_NOTIFY_CB  = false;
+  arg->print_notify_verbosity  = false;
 
   memset(&arg->next_WriteValues[0],0,sizeof(arg->next_WriteValues));
 }
@@ -52,7 +52,7 @@ void clone_rwcfg(const struct readwrite_config* src,struct readwrite_config* dst
   dst->tcpip_Enabled=src->tcpip_Enabled;
   dst->tcpip_PacketSize=src->tcpip_PacketSize;
   dst->tcpip_Port=src->tcpip_Port;
-  dst->PRINT_NOTIFY_CB=src->PRINT_NOTIFY_CB;
+  dst->print_notify_verbosity=src->print_notify_verbosity;
 
   memcpy(&dst->next_WriteValues[0],&src->next_WriteValues[0],sizeof(src->next_WriteValues));
 }

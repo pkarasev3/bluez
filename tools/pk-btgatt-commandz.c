@@ -101,8 +101,7 @@ void cmd_write_string(struct client *cli, char *cmd_str)
   struct readwrite_config* rwcfg;
   uint16_t handle;
   char *endptr = NULL;
-  int remaining_length;
-  uint8_t *command_string = NULL;
+  uint8_t command_string[2048];
   unsigned int temp_ui;
 
   if (!bt_gatt_client_is_ready(cli->gatt))
@@ -110,6 +109,9 @@ void cmd_write_string(struct client *cli, char *cmd_str)
 
   if (!parse_args(cmd_str, 514, argv + 1, &argc))
     RETURN_PRINTF_ERROR("Too many arguments in command: \n",cmd_str);
+
+  if (argc < 1)
+    return write_string_usage();
 
   rwcfg   = &(cli->rwcfg);
   temp_ui = rwcfg->handle_Write;
@@ -140,15 +142,10 @@ void cmd_write_string(struct client *cli, char *cmd_str)
   }
 
   rwcfg->handle_Write = temp_ui;
-  printf("options index = %02d \n    setting write handle: %d \n",option_index, rwcfg->handle_Write);
+  printf_V2(rwcfg,"options index = %02d \n    setting write handle: %d \n",option_index, rwcfg->handle_Write);
 
   argc -= optind;
   argv += optind;
-
-  if (argc < 1) {
-    write_string_usage();
-    return;
-  }
 
   if( temp_ui > 0 )
     handle = temp_ui;
@@ -161,24 +158,33 @@ void cmd_write_string(struct client *cli, char *cmd_str)
     }
   }
 
-  remaining_length                 = strlen(argvbuf[optind]); //whats left in argv after we stripped out command itself and -W  0xYZXW  "remainder"
-  command_string                   = malloc(remaining_length+1);
-  command_string[remaining_length] = 0;
 
-  printf(COLOR_MAGENTA " remaining length of cmd: %d \n     Extracting from remaining argv:    %s \n" COLOR_OFF,
-         remaining_length, argvbuf[optind]);
-  memcpy(command_string, argvbuf[optind], remaining_length);
+  memset(command_string,0,sizeof(command_string));
+  {
+    int idxCMD  = 0;
+    int lenOPT  = 0;
+    int idxOPT  = optind;
+    while(1)
+    {
+      if(!argvbuf[idxOPT])
+        break;
+      lenOPT                 = strlen(argvbuf[idxOPT]);
+      printf_V2(rwcfg,COLOR_MAGENTA"argv[%d] = %s; "COLOR_OFF,idxOPT,argvbuf[idxOPT]);
+      memcpy(&(command_string[idxCMD]),argvbuf[idxOPT],lenOPT);
+      idxCMD += lenOPT;
+      command_string[idxCMD++] = ' ';
+      idxOPT += 1;
+    }
+    printf_V2(rwcfg,COLOR_GREEN"idxCMD=%d,idxOPT=%d,  CMD = %s\n",idxCMD,idxOPT,command_string);
 
-  put_string_as_hex_values_command( rwcfg, command_string );
+    put_string_as_hex_values_command( rwcfg, command_string );
 
-  if( &cli->rwcfg != rwcfg) {
-    clone_rwcfg(rwcfg, &cli->rwcfg);
-    printf(COLOR_RED  "mismatched RWconfig objects!?\n" COLOR_OFF);
+    if( &cli->rwcfg != rwcfg) {
+      clone_rwcfg(rwcfg, &cli->rwcfg);
+      printf(COLOR_RED  "mismatched RWconfig objects!?\n" COLOR_OFF);
+    }
   }
-
   send_stringAsHexValueSequence(cli);
-
-  free(command_string);
 
 }
 
