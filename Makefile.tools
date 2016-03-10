@@ -333,6 +333,10 @@ tools_pk_btgatt_hack_CFLAGS  = $(AM_CFLAGS) -Wno-error=unused-function  -Wno-err
 tools_pk_btgatt_hack_SOURCES = tools/pk-btgatt-hack.c \
                                tools/pk-btgatt-tcpip.c \
                                tools/pk-btgatt-rwcfg.c \
+                               tools/pk-btgatt-commandz.c \
+                               tools/pk-btgatt-rwcfg.h \
+                               tools/pk-btgatt-commandz.h \
+                               tools/pk-btgatt-tcpip.h \
                                src/uuid-helper.c
 
 tools_pk_btgatt_hack_LDADD   = src/libshared-mainloop.la \
