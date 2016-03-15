@@ -2655,8 +2655,10 @@ static gboolean avrcp_set_browsed_player_rsp(struct avctp *conn,
 		uint8_t len;
 
 		len = pdu->params[i++];
+		if (!len)
+			continue;
 
-		if (i + len > operand_count || len == 0) {
+		if (i + len > operand_count) {
 			error("Invalid folder length");
 			break;
 		}
@@ -3843,12 +3845,11 @@ static void controller_init(struct avrcp *session)
 	btd_service_connecting_complete(service, 0);
 
 	/* Only create player if category 1 is supported */
-	if (!(controller->features & AVRCP_FEATURE_CATEGORY_1))
-		return;
-
-	player = create_ct_player(session, 0);
-	if (player == NULL)
-		return;
+	if (controller->features & AVRCP_FEATURE_CATEGORY_1) {
+		player = create_ct_player(session, 0);
+		if (player == NULL)
+			return;
+	}
 
 	if (controller->version < 0x0103)
 		return;

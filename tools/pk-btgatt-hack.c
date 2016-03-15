@@ -51,28 +51,14 @@
 #include "src/shared/gatt-client.h"
 
 #include "pk-btgatt-rwcfg.h"
-#include "pk-btgatt-tcpip.h"
+#include "pk-btgatt-tcpip.h"    // provides tcpip_server
+#include "pk-btgatt-commandz.h" // provides struct client
+
+
 
 #define ATT_CID 4
 
-#define PRLOG(...) \
-  printf(__VA_ARGS__); print_prompt();
-
-
 static bool verbose = false;
-
-struct client
-{
-  int fd;
-  struct bt_att *att;
-  struct gatt_db *db;
-  struct bt_gatt_client *gatt;
-
-  unsigned int reliable_session_id;
-
-  //////////////////////////////////
-  struct readwrite_config  rwcfg;
-};
 
 /////////////////////////////////////////////////////////
 struct tcpip_server*  global_server;
@@ -87,6 +73,8 @@ atomic_int   RegistrationState  = ATOMIC_VAR_INIT(0);
 atomic_int   PromptPrintState   = ATOMIC_VAR_INIT(0);
 static int   PromptPrint_OFF_   = 2;
 
+#define PRLOG(...) \
+     {printf(__VA_ARGS__); print_prompt();}
 
 static struct option main_options[] =
 {
@@ -99,7 +87,7 @@ static struct option main_options[] =
   { "dest",             1, 0, 'd' },
   { "type",             1, 0, 't' },
   { "mtu",   	          1, 0, 'm' },
-  { "notify-via-printf",0, 0, 'n' },
+  { "notify-via-printf",1, 0, 'n' },
   { "security-level",	  1, 0, 's' },
   { "verbose",          0, 0, 'v' },
   { "help",             0, 0, 'h' },
@@ -114,54 +102,6 @@ static void print_prompt(void)
     return;
   printf(COLOR_BLUE "[GATT client]" COLOR_OFF "# ");
   fflush(stdout);
-}
-
-static const char *ecode_to_string(uint8_t ecode)
-{
-  switch (ecode) {
-  case BT_ATT_ERROR_INVALID_HANDLE:
-    return "Invalid Handle";
-  case BT_ATT_ERROR_READ_NOT_PERMITTED:
-    return "Read Not Permitted";
-  case BT_ATT_ERROR_WRITE_NOT_PERMITTED:
-    return "Write Not Permitted";
-  case BT_ATT_ERROR_INVALID_PDU:
-    return "Invalid PDU";
-  case BT_ATT_ERROR_AUTHENTICATION:
-    return "Authentication Required";
-  case BT_ATT_ERROR_REQUEST_NOT_SUPPORTED:
-    return "Request Not Supported";
-  case BT_ATT_ERROR_INVALID_OFFSET:
-    return "Invalid Offset";
-  case BT_ATT_ERROR_AUTHORIZATION:
-    return "Authorization Required";
-  case BT_ATT_ERROR_PREPARE_QUEUE_FULL:
-    return "Prepare Write Queue Full";
-  case BT_ATT_ERROR_ATTRIBUTE_NOT_FOUND:
-    return "Attribute Not Found";
-  case BT_ATT_ERROR_ATTRIBUTE_NOT_LONG:
-    return "Attribute Not Long";
-  case BT_ATT_ERROR_INSUFFICIENT_ENCRYPTION_KEY_SIZE:
-    return "Insuficient Encryption Key Size";
-  case BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN:
-    return "Invalid Attribute value len";
-  case BT_ATT_ERROR_UNLIKELY:
-    return "Unlikely Error";
-  case BT_ATT_ERROR_INSUFFICIENT_ENCRYPTION:
-    return "Insufficient Encryption";
-  case BT_ATT_ERROR_UNSUPPORTED_GROUP_TYPE:
-    return "Group type Not Supported";
-  case BT_ATT_ERROR_INSUFFICIENT_RESOURCES:
-    return "Insufficient Resources";
-  case BT_ERROR_CCC_IMPROPERLY_CONFIGURED:
-    return "CCC Improperly Configured";
-  case BT_ERROR_ALREADY_IN_PROGRESS:
-    return "Procedure Already in Progress";
-  case BT_ERROR_OUT_OF_RANGE:
-    return "Out of Range";
-  default:
-    return "Unknown error type";
-  }
 }
 
 static void att_disconnect_cb(int err, void *user_data)
@@ -401,8 +341,6 @@ static void print_services_by_handle(struct client *cli, uint16_t handle)
   gatt_db_foreach_service(cli->db, NULL, print_service, cli);
 }
 
-static void write_cb(bool success, uint8_t att_ecode, void *user_data);
-
 ///////////////////////////////////////
 struct thread_info
 {
@@ -456,53 +394,11 @@ static void* loop_register_later( void* arg )
     return tinfo;
 }
 
-static
-int  write_string_to_handle(
-        struct client* cli,
-        const char* cmd,
-        size_t sz,
-        uint16_t Xhandle    )
-{
-    unsigned int idx =  0;
-    int result       = -1;
-    usleep(100);
-    while( idx < sz )
-    {
-        uint8_t val;
-        val    = cmd[idx];
-        result = bt_gatt_client_write_value(
-                      cli->gatt,
-                      Xhandle,
-                      &val,
-                      1,
-                      write_cb,
-                      NULL, NULL);
-        idx++;
-        if( !result )
-        {
-            fprintf(stderr, "failed writing %s to handle %d\n",cmd,Xhandle);
-            break;
-        }
-    }
-    return result;
-}
 
 static void inject_pk_hack(struct client *cli)
 {    
     {
-        int cmd0_end       = 0;
-        uint16_t Xhandle   = cli->rwcfg.handle_Write; //0x0015;
-        const char* cmd0   = cli->rwcfg.init_WriteValues;
-        printf("\n cmd0 going to write to: 0x%04x \n", Xhandle);
-        while( cmd0_end >= 0 )
-        {
-          if(cmd0[cmd0_end] == 0)
-            break;
-          printf(COLOR_MAGENTA " %02x " COLOR_OFF,cmd0[cmd0_end] );
-          cmd0_end++;
-        }
-
-        write_string_to_handle(cli,cmd0,strlen(cmd0),Xhandle);
+        send_stringAsHexValueSequence(cli);
 
         {
             int s;
@@ -559,23 +455,7 @@ static void services_usage(void)
     "\tservices\n\tservices -u 0x180d\n\tservices -a 0x0009\n");
 }
 
-static bool parse_args(char *str, int expected_argc,  char **argv, int *argc)
-{
-  char **ap;
 
-  for (ap = argv; (*ap = strsep(&str, " \t")) != NULL;) {
-    if (**ap == '\0')
-      continue;
-
-    (*argc)++;
-    ap++;
-
-    if (*argc > expected_argc)
-      return false;
-  }
-
-  return true;
-}
 
 static void cmd_services(struct client *cli, char *cmd_str)
 {
@@ -807,16 +687,6 @@ static struct option write_value_options[] = {
   { "signed-write",	0, 0, 's' },
   { }
 };
-
-static void write_cb(bool success, uint8_t att_ecode, void *user_data)
-{
-  if (success) {
-    PRLOG("\nWrite successful\n");
-  } else {
-    PRLOG("\nWrite failed: %s (0x%02x)\n",
-        ecode_to_string(att_ecode), att_ecode);
-  }
-}
 
 static void cmd_write_value(struct client *cli, char *cmd_str)
 {
@@ -1280,7 +1150,7 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
       fflush(stderr);
   }
 
-  printf_enabled = global_client->rwcfg.PRINT_NOTIFY_CB;
+  printf_enabled = (0 < global_client->rwcfg.print_notify_verbosity);
   if(printf_enabled)
   {
       printf(" global_serv->port=%d ... ",global_server->port);
@@ -1308,8 +1178,9 @@ static void notify_cb(uint16_t value_handle, const uint8_t *value,
     if( (i>0) && (value[i-1]==0x0d) && (value[i]==0x0a) ) // if line ends with CR LF
     {
         int iWrote;
-        if(0)
-            printf("got new line of length %03d\n",global_server->line_len);
+        if(printf_enabled && (length != global_server->line_len) )
+            printf( COLOR_MAGENTA " mismatched line lengths? %03d vs %03d \n " COLOR_OFF, length, global_server->line_len);
+
         iWrote = tcpip_server_write_line( global_server );
 
         if(iWrote == global_server->line_len)
@@ -1530,6 +1401,7 @@ static void cmd_exit(struct client *cli, char *cmd_str);
 
 typedef void (*command_func_t)(struct client *cli, char *cmd_str);
 
+
 static struct {
   char *cmd;
   command_func_t func;
@@ -1549,7 +1421,8 @@ static struct {
   { "write-prepare", cmd_write_prepare,
       "\tWrite prepare characteristic or descriptor value" },
   { "write-execute", cmd_write_execute,
-      "\tExecute already prepared write" },
+      "\tExecute already prepared write" },  
+  {  str2hex_cmd, cmd_write_string, str2hex_doc},
   { "register-notify", cmd_register_notify,
       "\tSubscribe to not/ind from a characteristic" },
   { "unregister-notify", cmd_unregister_notify,
@@ -1630,6 +1503,20 @@ failed:
 }
 
 
+#define TVOYU_M "┌|┐(⋟_⋞)┌|┐"
+static void segfault_loop(int sn)
+{
+  int ncntMax = 100;
+  int ncnt    = 0;
+  printf( COLOR_BOLDGRAY  " [%d] : Segfault! "  COLOR_BOLDRED   TVOYU_M   COLOR_OFF, sn);
+  while(++ncnt < ncntMax) {
+    fprintf( stderr, "  time left to attach debugger: %03d/%03d ...\r" COLOR_BOLDRED  TVOYU_M  COLOR_OFF, ncnt, ncntMax);
+    fflush(stderr);
+    usleep(60 * 1000 * 1000 / ncntMax);
+  }
+  exit(-2);
+}
+
 static void signal_cb(int signum, void *user_data)
 {
   switch (signum) {
@@ -1637,6 +1524,9 @@ static void signal_cb(int signum, void *user_data)
   case SIGTERM:
     mainloop_quit();
     break;
+  case SIGSEGV:
+    segfault_loop(signum);
+    mainloop_quit();
 //  case SIGUSR1:
 //      block_for_deferred_registration();
 //      break;
@@ -1738,7 +1628,7 @@ int main(int argc, char *argv[])
 
   initialize_rwcfg(&RWcfgTemp);
 
-  while ((opt = getopt_long(argc, argv, "+hvs:m:nt:d:i:P:W:N:C:Z:",
+  while ((opt = getopt_long(argc, argv, "+hvs:m:n:t:d:i:P:W:N:C:Z:",
             main_options, NULL)) != -1) {
     switch (opt) {
       case 'h':
@@ -1748,7 +1638,10 @@ int main(int argc, char *argv[])
         verbose = true;
         break;
       case 'n':
-        RWcfgTemp.PRINT_NOTIFY_CB = true;
+        RWcfgTemp.print_notify_verbosity = true;
+        if(opt>=0)
+          RWcfgTemp.print_notify_verbosity = opt;
+        printf("arg %s found; setting verbosity = %d\n",optarg,RWcfgTemp.print_notify_verbosity);
         atomic_store(&PromptPrintState,1);
         break;
       case 'P':
@@ -1767,7 +1660,7 @@ int main(int argc, char *argv[])
         printf("got value: %d for notify/read handle\n",RWcfgTemp.handle_Read);
         break;
       case 'C':
-        cmd_from_arg(&RWcfgTemp,optarg);
+        cmd_from_arg(&RWcfgTemp,(uint8_t*)optarg);
         break;
       case 'Z':
         RWcfgTemp.tcpip_PacketSize = atoi(optarg);
@@ -1892,11 +1785,13 @@ int main(int argc, char *argv[])
 
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
-  sigaddset(&mask, SIGTERM);  
+  sigaddset(&mask, SIGTERM);
 
   mainloop_set_signal(&mask, signal_cb, NULL, NULL);
 
   print_prompt();
+
+  signal(SIGSEGV, segfault_loop);
 
   mainloop_run();
 
@@ -1913,4 +1808,4 @@ int main(int argc, char *argv[])
 
 
 
-
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

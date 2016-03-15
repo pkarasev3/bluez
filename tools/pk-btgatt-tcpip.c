@@ -30,6 +30,12 @@ struct tcpip_server*   setup_tcpip_server( struct tcpip_server*  serv, struct re
     serv->port = rwcfg->tcpip_Port;
     fprintf(stdout,"port = %d\n",serv->port);
 
+    if(serv->port <= 0)
+    {
+      printf(COLOR_YELLOW " skipping tcpip setup... \n" COLOR_OFF);
+      return serv;
+    }
+
     if ( (serv->list_s = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
     {
         fprintf(stderr, "ECHOSERV: Error creating listening socket.\n");
