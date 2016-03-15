@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-while ! pk-btgatt-hack $* ; do
+while pk-btgatt-hack $* ; do
    echo "Relaunching..."
 done
 	
