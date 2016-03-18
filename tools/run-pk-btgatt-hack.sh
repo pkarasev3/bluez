@@ -22,7 +22,11 @@ SpawnStopToken="spawn-token.tmp"
 echo "executable finished; Respawning unless file:"
 echo "                 ***** $SpawnStopToken ***** "
 echo "                                exists in `pwd` ."	
-sleep 1
+sleep 2
+echo "....patience..."
+sleep 5
+echo " ok, respawning should happen."
+sleep 2
 
 if [ ! -f $SpawnStopToken ]
 then

@@ -1603,6 +1603,52 @@ static int l2cap_le_att_connect(bdaddr_t *src, bdaddr_t *dst, uint8_t dst_type,
   return sock;
 }
 
+struct hazaradous_resources
+{
+  int bt_fd;
+  struct client* bt_cli;
+  struct tcpip_server* bt_serv;
+};
+
+static struct hazaradous_resources* global_hazards = NULL;
+
+static void initHR(struct hazaradous_resources* hr)
+{
+  hr->bt_fd      = -1;
+  hr->bt_cli     = NULL;
+  hr->bt_serv    = NULL;
+  global_hazards = hr;
+}
+
+
+static void cleanup (void)
+{
+  fprintf(stderr,COLOR_RED "\n last ditch effort to cleanup garbage . . . " COLOR_OFF);
+  fflush(stderr);
+
+  if(NULL==global_hazards)
+    return;
+  if(global_hazards->bt_fd >= 0)  {
+    close(global_hazards->bt_fd);
+    global_hazards->bt_fd = -1;
+  }
+
+  if(NULL != global_hazards->bt_cli )  {
+    client_destroy(global_hazards->bt_cli);
+    global_hazards->bt_cli = NULL;
+  }
+
+  if(NULL != global_hazards->bt_serv) {
+    tcpip_server_destroy(global_hazards->bt_serv);
+    global_hazards->bt_serv = NULL;
+  }
+
+  global_hazards = NULL;
+  fprintf(stderr,COLOR_RED "done!\n" COLOR_OFF);
+}
+
+struct hazaradous_resources  hazards;
+
 /////////////////////////////////////////////////////////
 int main(int argc, char *argv[])
 {   
@@ -1622,7 +1668,12 @@ int main(int argc, char *argv[])
   struct tcpip_server* PKserv;
   struct readwrite_config  RWcfgTemp;
 
-  PKserv        = tcpip_server_create();
+  initHR(&hazards);
+  atexit(cleanup);
+
+
+  PKserv          = tcpip_server_create();
+  hazards.bt_serv = PKserv;
 
   fprintf(stdout, "%s  %s @ %d\n",__DATE__,__FILE__,__LINE__);
 
@@ -1756,13 +1807,16 @@ int main(int argc, char *argv[])
   }
 
   /// configure the tcpip parameters
-  global_server = setup_tcpip_server(PKserv,&RWcfgTemp);
+  global_server   = setup_tcpip_server(PKserv,&RWcfgTemp);
+  hazards.bt_serv = global_server;
 
   mainloop_init();
 
   fd = l2cap_le_att_connect(&src_addr, &dst_addr, dst_type, sec);
   if (fd < 0)
     return EXIT_FAILURE;
+
+  hazards.bt_fd = fd;
 
   cli = client_create(fd, mtu);
   if (!cli)
@@ -1774,13 +1828,15 @@ int main(int argc, char *argv[])
   /// copy the read-write-config parameters to CLI instance
   clone_rwcfg(&RWcfgTemp,&cli->rwcfg);
 
-  /// register callback handler
-  if (mainloop_add_fd(fileno(stdin),
-        EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR,
-        prompt_read_cb /*register our callback*/ , cli, NULL) < 0)
   {
-    fprintf(stderr, "Failed to initialize console\n");
-    return EXIT_FAILURE;
+    /// register callback handler
+    int ret = mainloop_add_fd(fileno(stdin),
+            EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR,
+            prompt_read_cb /*register our callback*/ , cli, NULL);
+    if (ret < 0) {
+      fprintf(stderr, "Failed to initialize console; code: %d\n",ret);
+      return EXIT_FAILURE;
+    }
   }
 
   sigemptyset(&mask);
@@ -1798,14 +1854,13 @@ int main(int argc, char *argv[])
   printf("\n\nShutting down...\n");
 
   client_destroy(cli);
+  global_hazards->bt_cli = NULL;
 
   tcpip_server_destroy(PKserv);
+  global_hazards->bt_serv = NULL;
 
   return EXIT_SUCCESS;
 }
-
-
-
 
 
 //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
