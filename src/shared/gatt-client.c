@@ -291,25 +291,6 @@ struct handle_range {
 	uint16_t end;
 };
 
-static bool match_notify_data_handle_range(const void *a, const void *b)
-{
-	const struct notify_data *notify_data = a;
-	struct notify_chrc *chrc = notify_data->chrc;
-	const struct handle_range *range = b;
-
-	return chrc->value_handle >= range->start &&
-					chrc->value_handle <= range->end;
-}
-
-static bool match_notify_chrc_handle_range(const void *a, const void *b)
-{
-	const struct notify_chrc *chrc = a;
-	const struct handle_range *range = b;
-
-	return chrc->value_handle >= range->start &&
-					chrc->value_handle <= range->end;
-}
-
 static void notify_data_cleanup(void *data)
 {
 	struct notify_data *notify_data = data;
@@ -318,32 +299,6 @@ static void notify_data_cleanup(void *data)
 		bt_att_cancel(notify_data->client->att, notify_data->att_id);
 
 	notify_data_unref(notify_data);
-}
-
-static void gatt_client_remove_all_notify_in_range(
-				struct bt_gatt_client *client,
-				uint16_t start_handle, uint16_t end_handle)
-{
-	struct handle_range range;
-
-	range.start = start_handle;
-	range.end = end_handle;
-
-	queue_remove_all(client->notify_list, match_notify_data_handle_range,
-						&range, notify_data_cleanup);
-}
-
-static void gatt_client_remove_notify_chrcs_in_range(
-				struct bt_gatt_client *client,
-				uint16_t start_handle, uint16_t end_handle)
-{
-	struct handle_range range;
-
-	range.start = start_handle;
-	range.end = end_handle;
-
-	queue_remove_all(client->notify_chrcs, match_notify_chrc_handle_range,
-						&range, notify_chrc_free);
 }
 
 struct discovery_op;
@@ -1422,22 +1377,6 @@ static void process_service_changed(struct bt_gatt_client *client,
 {
 	struct discovery_op *op;
 
-	/* On full database reset just re-run attribute discovery */
-	if (start_handle == 0x0001 && end_handle == 0xffff)
-		goto discover;
-
-	/* Invalidate and remove all effected notify callbacks */
-	gatt_client_remove_all_notify_in_range(client, start_handle,
-								end_handle);
-	gatt_client_remove_notify_chrcs_in_range(client, start_handle,
-								end_handle);
-
-	/* Remove all services that overlap the modified range since we'll
-	 * rediscover them
-	 */
-	gatt_db_clear_range(client->db, start_handle, end_handle);
-
-discover:
 	op = discovery_op_create(client, start_handle, end_handle,
 						service_changed_complete,
 						service_changed_failure);
@@ -1544,6 +1483,11 @@ static bool gatt_client_init(struct bt_gatt_client *client, uint16_t mtu)
 	if (!op)
 		return false;
 
+	/* Check if MTU needs to be send */
+	mtu = MAX(BT_ATT_DEFAULT_LE_MTU, mtu);
+	if (mtu == BT_ATT_DEFAULT_LE_MTU)
+		goto discover;
+
 	/* Configure the MTU */
 	client->mtu_req_id = bt_gatt_exchange_mtu(client->att,
 						MAX(BT_ATT_DEFAULT_LE_MTU, mtu),
@@ -1557,6 +1501,20 @@ static bool gatt_client_init(struct bt_gatt_client *client, uint16_t mtu)
 
 	client->in_init = true;
 
+	return true;
+
+discover:
+	client->discovery_req = bt_gatt_discover_all_primary_services(
+							client->att, NULL,
+							discover_primary_cb,
+							discovery_op_ref(op),
+							discovery_op_unref);
+	if (!client->discovery_req) {
+		discovery_op_free(op);
+		return false;
+	}
+
+	client->in_init = true;
 	return true;
 }
 
@@ -1701,14 +1659,10 @@ static void att_disconnect_cb(int err, void *user_data)
 		notify_client_ready(client, false, 0);
 }
 
-struct bt_gatt_client *bt_gatt_client_new(struct gatt_db *db,
-							struct bt_att *att,
-							uint16_t mtu)
+static struct bt_gatt_client *gatt_client_new(struct gatt_db *db,
+							struct bt_att *att)
 {
 	struct bt_gatt_client *client;
-
-	if (!att || !db)
-		return NULL;
 
 	client = new0(struct bt_gatt_client, 1);
 	client->disc_id = bt_att_register_disconnect(att, att_disconnect_cb,
@@ -1735,14 +1689,49 @@ struct bt_gatt_client *bt_gatt_client_new(struct gatt_db *db,
 	client->att = bt_att_ref(att);
 	client->db = gatt_db_ref(db);
 
-	if (!gatt_client_init(client, mtu))
-		goto fail;
-
-	return bt_gatt_client_ref(client);
+	return client;
 
 fail:
 	bt_gatt_client_free(client);
 	return NULL;
+
+}
+
+struct bt_gatt_client *bt_gatt_client_new(struct gatt_db *db,
+							struct bt_att *att,
+							uint16_t mtu)
+{
+	struct bt_gatt_client *client;
+
+	if (!att || !db)
+		return NULL;
+
+	client = gatt_client_new(db, att);
+	if (!client)
+		return NULL;
+
+	if (!gatt_client_init(client, mtu)) {
+		bt_gatt_client_free(client);
+		return NULL;
+	}
+
+	return bt_gatt_client_ref(client);
+}
+
+struct bt_gatt_client *bt_gatt_client_clone(struct bt_gatt_client *client)
+{
+	struct bt_gatt_client *clone;
+
+	if (!client || !client->ready)
+		return NULL;
+
+	clone = gatt_client_new(client->db, client->att);
+	if (!clone)
+		return NULL;
+
+	clone->ready = client->ready;
+
+	return bt_gatt_client_ref(clone);
 }
 
 struct bt_gatt_client *bt_gatt_client_ref(struct bt_gatt_client *client)
