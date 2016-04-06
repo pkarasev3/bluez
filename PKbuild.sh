@@ -21,12 +21,8 @@ fi
     --enable-library       \
     --enable-test          \
     --enable-manpages \
-    --with-dbus \
     --with-pic \
-    --with-dbusconfdir=/etc/dbus-1/ \
-    --disable-systemd      \
-		--sysconfdir=/etc \
-		--localstatedir=/var \
+    --with-dbusconfdir=/etc/dbus-1/\
 		--enable-manpages \
 		--enable-experimental \
 		--enable-android \
