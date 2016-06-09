@@ -73,12 +73,10 @@ int  write_string_to_handle(
     return result;
 }
 
-void send_stringAsHexValueSequence(struct client* cli)
+int uint16_as_hex_string(uint16_t Xhandle,const char* cmd0)
 {
   int cmd0_end       = 0;
-  uint16_t Xhandle   = cli->rwcfg.handle_Write; //0x0015;
-  const char* cmd0   = cli->rwcfg.next_WriteValues;
-  printf("\n cmd0 going to write to: 0x%04x \n", Xhandle);
+  printf(COLOR_BOLDRED " got string: %s \n",cmd0);
   while( cmd0_end >= 0 )
   {
     if(cmd0[cmd0_end] == 0)
@@ -86,6 +84,20 @@ void send_stringAsHexValueSequence(struct client* cli)
     printf(COLOR_MAGENTA " %02x " COLOR_OFF,cmd0[cmd0_end] );
     cmd0_end++;
   }
+  return cmd0_end;
+}
+
+void send_stringAsHexValueSequence(struct client* cli)
+{
+  int nWrittenChars  = -1;
+  uint16_t Xhandle   = cli->rwcfg.handle_Write; //0x0015;
+  const char* cmd0   = cli->rwcfg.next_WriteValues;
+
+  printf("\n cmd0 going to write to: 0x%04x \n", Xhandle);
+
+  nWrittenChars = uint16_as_hex_string(Xhandle,cmd0);
+
+  printf("\n wrote number of chars: %d \n",nWrittenChars);
 
   write_string_to_handle(cli,cmd0,strlen(cmd0),Xhandle);
 }

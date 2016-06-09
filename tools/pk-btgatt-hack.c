@@ -379,13 +379,16 @@ static void* loop_register_later( void* arg )
     fflush(stdin);
 
     {
-        cmd_register_notify(tinfo->cli,"0x0018"/*TODO: use the one in cli->rwcfg*/);
+        const char* cmdstr = "0x00XX";
+        uint16_as_hex_string(tinfo->cli->rwcfg.handle_Read,
+                             tinfo->cli->rwcfg.next_WriteValues);
+        cmd_register_notify(tinfo->cli, (char*)cmdstr);
 
         fflush(stdin);
         fflush(stdout);
         fflush(stderr);
 
-        state = 0;        
+        state = 0;
         atomic_store(&RegistrationState,state);
 
         atomic_store(&PromptPrintState,PromptPrint_OFF_);
@@ -396,7 +399,7 @@ static void* loop_register_later( void* arg )
 
 
 static void inject_pk_hack(struct client *cli)
-{    
+{
     {
         send_stringAsHexValueSequence(cli);
 
@@ -1421,7 +1424,7 @@ static struct {
   { "write-prepare", cmd_write_prepare,
       "\tWrite prepare characteristic or descriptor value" },
   { "write-execute", cmd_write_execute,
-      "\tExecute already prepared write" },  
+      "\tExecute already prepared write" },
   {  str2hex_cmd, cmd_write_string, str2hex_doc},
   { "register-notify", cmd_register_notify,
       "\tSubscribe to not/ind from a characteristic" },
@@ -1651,7 +1654,7 @@ struct hazaradous_resources  hazards;
 
 /////////////////////////////////////////////////////////
 int main(int argc, char *argv[])
-{   
+{
   int opt;
   int sec = BT_SECURITY_LOW;
   uint16_t mtu = 0;
@@ -1700,7 +1703,7 @@ int main(int argc, char *argv[])
         if(RWcfgTemp.tcpip_Port<=0)
           RWcfgTemp.tcpip_Enabled = 0;
         break;
-      case 'W':        
+      case 'W':
         sscanf(optarg,"0x%04x",&temp_ui);
         RWcfgTemp.handle_Write = temp_ui;
         printf("got value: %d for write handle\n",RWcfgTemp.handle_Write);

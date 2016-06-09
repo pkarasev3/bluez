@@ -50,6 +50,10 @@ void cmd_write_string(struct client *cli, char *cmd_str);
 
 void write_string_usage();
 
+//! @brief convert something like hex 0x001B into string version "0x001B"
+//!    note: caller is responsible for safety of array bounds!
+int  uint16_as_hex_string(uint16_t Xhandle,const char* cmd0);
+
 void send_stringAsHexValueSequence(struct client* cli);
 
 int  write_string_to_handle(
