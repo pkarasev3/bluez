@@ -382,7 +382,8 @@ static void* loop_register_later( void* arg )
         const char* cmdstr = "0x00XX";
         uint16_as_hex_string(tinfo->cli->rwcfg.handle_Read,
                              tinfo->cli->rwcfg.next_WriteValues);
-        cmd_register_notify(tinfo->cli, (char*)cmdstr);
+        cmd_register_notify(tinfo->cli, "0x0046"
+                            /*(char*)cmdstr*/);
 
         fflush(stdin);
         fflush(stdout);

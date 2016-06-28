@@ -30,7 +30,7 @@ sleep 2
 
 if [ ! -f $SpawnStopToken ]
 then
-  . run-pk-btgatt-hack.sh $* & 
+  gnome-terminal -e "./run-pk-btgatt-hack.sh $* "
 fi
 
 echo "done with runner instance"
